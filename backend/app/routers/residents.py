@@ -1,12 +1,27 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit import log_action
-from app.auth import ensure_region_access, get_current_user, region_scope_ids, require_role, user_scope_ids
+from app.auth import city_scope_ids, ensure_region_access, operational_user, region_scope_ids, require_role, user_scope_ids
+from app.config import settings
 from app.db import get_db, utcnow
-from app.models import Incident, Region, Resident, ResidentStatusLog, Role, SafetyStatus, StatusSource, User
+from app.models import (
+    AlertKind,
+    FamilyMember,
+    Incident,
+    Region,
+    Resident,
+    ResidentStatusLog,
+    Role,
+    SafetyStatus,
+    StatusSource,
+    User,
+)
 from app.schemas import (
+    ConsentIn,
+    FamilyIn,
+    FamilyOut,
     HelpRequestOut,
     LocationIn,
     ResidentCreate,
@@ -18,6 +33,9 @@ from app.schemas import (
     StatusSummaryOut,
     StatusUpdateIn,
 )
+from app.services import notifier
+from app.services.alerting import emit
+from app.services.disaster import hazard_zones, in_hazard, last_location_usable, mode_regions
 from app.services.residents import (
     active_incident_for_region,
     help_queue,
@@ -28,11 +46,17 @@ from app.services.residents import (
 
 router = APIRouter(tags=["warga"])
 coordinator = require_role(Role.KOORDINATOR, Role.ADMIN)
+sar_or_coord = require_role(Role.KOORDINATOR, Role.ADMIN, Role.TIM_SAR, Role.POS_PANTAU)
+warga_only = require_role(Role.WARGA)
+CONSENT_VERSION = "v1"
 
 
 def _scoped_residents(db: Session, me: User, region_id: int | None = None) -> list[Resident]:
     q = select(Resident).order_by(Resident.name, Resident.id)
-    scope = user_scope_ids(db, me)
+    if me.role in (Role.TIM_SAR, Role.POS_PANTAU):
+        scope = city_scope_ids(db, me.region_id)
+    else:
+        scope = user_scope_ids(db, me)
     if scope is not None:
         q = q.where(Resident.region_id.in_(scope))
     if region_id is not None:
@@ -74,13 +98,14 @@ def list_residents(
     vulnerable: bool | None = None,
     incident_id: int | None = None,
     db: Session = Depends(get_db),
-    me: User = Depends(coordinator),
+    me: User = Depends(sar_or_coord),
 ):
     residents = _scoped_residents(db, me, region_id)
     if q:
         residents = [r for r in residents if q.lower() in r.name.lower()]
     latest = latest_status_map(db, [r.id for r in residents], incident_id)
-    out = [resident_view(r, latest.get(r.id)) for r in residents]
+    now, mode = utcnow(), mode_regions(db)
+    out = [resident_view(r, latest.get(r.id), show_last=last_location_usable(r, mode, now)) for r in residents]
     if vulnerable is not None:
         out = [o for o in out if bool(o["vulnerability"]) == vulnerable]
     if status_:
@@ -95,7 +120,7 @@ def residents_summary(region_id: int | None = None, incident_id: int | None = No
 
 
 @router.get("/help-requests", response_model=list[HelpRequestOut])
-def help_requests(incident_id: int | None = None, db: Session = Depends(get_db), me: User = Depends(coordinator)):
+def help_requests(incident_id: int | None = None, db: Session = Depends(get_db), me: User = Depends(sar_or_coord)):
     return help_queue(db, _scoped_residents(db, me), incident_id)
 
 
@@ -125,7 +150,8 @@ def get_resident(resident_id: int, db: Session = Depends(get_db), me: User = Dep
     resident = _get(db, me, resident_id)
     log_action(db, actor_id=me.id, action="resident.view_detail", entity_type="resident", entity_id=resident.id)
     db.commit()
-    return resident_view(resident, latest_status_map(db, [resident.id]).get(resident.id), detail=True)
+    show = last_location_usable(resident, mode_regions(db), utcnow())
+    return resident_view(resident, latest_status_map(db, [resident.id]).get(resident.id), detail=True, show_last=show)
 
 
 @router.patch("/residents/{resident_id}", response_model=ResidentDetail)
@@ -173,6 +199,42 @@ def status_history(resident_id: int, db: Session = Depends(get_db), me: User = D
                       .order_by(ResidentStatusLog.id)).all()
 
 
+# ---------- Data keluarga (koordinator, FR-060) ----------
+
+@router.get("/residents/{resident_id}/family", response_model=list[FamilyOut])
+def list_family(resident_id: int, db: Session = Depends(get_db), me: User = Depends(coordinator)):
+    resident = _get(db, me, resident_id)
+    log_action(db, actor_id=me.id, action="family.view", entity_type="resident", entity_id=resident.id)  # data sensitif
+    db.commit()
+    return db.scalars(select(FamilyMember).where(FamilyMember.resident_id == resident.id).order_by(FamilyMember.id)).all()
+
+
+@router.post("/residents/{resident_id}/family", response_model=FamilyOut, status_code=status.HTTP_201_CREATED)
+def add_family(resident_id: int, body: FamilyIn, db: Session = Depends(get_db), me: User = Depends(coordinator)):
+    resident = _get(db, me, resident_id)
+    _check_consent([v.value for v in body.vulnerability], body.note, resident.consent)
+    member = FamilyMember(resident_id=resident.id, created_by=me.id, created_at=utcnow(),
+                          **body.model_dump(mode="json"))
+    db.add(member)
+    db.flush()
+    log_action(db, actor_id=me.id, action="family.add", entity_type="resident", entity_id=resident.id,
+               new={"anggota_id": member.id})  # isi catatan tidak disalin ke audit
+    db.commit()
+    return member
+
+
+@router.delete("/residents/{resident_id}/family/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_family(resident_id: int, member_id: int, db: Session = Depends(get_db), me: User = Depends(coordinator)):
+    resident = _get(db, me, resident_id)
+    member = db.get(FamilyMember, member_id)
+    if member is None or member.resident_id != resident.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Anggota keluarga tidak ditemukan")
+    db.delete(member)
+    log_action(db, actor_id=me.id, action="family.remove", entity_type="resident", entity_id=resident.id,
+               new={"anggota_id": member_id})
+    db.commit()
+
+
 # ---------- Warga (data sendiri) ----------
 
 def _my_resident(db: Session, me: User) -> Resident:
@@ -185,38 +247,111 @@ def _my_resident(db: Session, me: User) -> Resident:
     return resident
 
 
+def _own_view(db: Session, resident: Resident) -> dict:
+    return resident_view(resident, latest_status_map(db, [resident.id]).get(resident.id), detail=True, show_last=True)
+
+
 @router.get("/me/resident", response_model=ResidentDetail)
-def my_resident(db: Session = Depends(get_db), me: User = Depends(get_current_user)):
+def my_resident(db: Session = Depends(get_db), me: User = Depends(warga_only)):
     resident = _my_resident(db, me)
     db.commit()
-    return resident_view(resident, latest_status_map(db, [resident.id]).get(resident.id), detail=True)
+    return _own_view(db, resident)
+
+
+@router.get("/me/family", response_model=list[FamilyOut])
+def my_family(db: Session = Depends(get_db), me: User = Depends(warga_only)):
+    resident = _my_resident(db, me)
+    db.commit()
+    return db.scalars(select(FamilyMember).where(FamilyMember.resident_id == resident.id).order_by(FamilyMember.id)).all()
+
+
+@router.get("/me/mode")
+def my_mode(db: Session = Depends(get_db), me: User = Depends(warga_only)):
+    """Apakah Mode Bencana aktif di area warga + sisa waktu menjawab (PRD §8, §9.3)."""
+    resident = _my_resident(db, me)
+    db.commit()
+    now = utcnow()
+    mode = mode_regions(db, now)
+    since = mode.get(resident.region_id)
+    if since is None:
+        return {"active": False}
+    answered = db.scalar(select(ResidentStatusLog.id).where(
+        ResidentStatusLog.resident_id == resident.id, ResidentStatusLog.created_at >= since,
+        ResidentStatusLog.source == StatusSource.MANDIRI).limit(1)) is not None
+    left = max(0, int(settings.diduga_minutes * 60 - (now - since).total_seconds()))
+    usable = last_location_usable(resident, mode, now)
+    in_zone = in_hazard(resident.last_lat, resident.last_lng, hazard_zones(db)) if usable else None
+    return {"active": True, "since": since, "answered": answered, "seconds_left": left,
+            "diduga_minutes": settings.diduga_minutes, "consented": resident.location_consented,
+            "in_hazard_zone": in_zone}
+
+
+@router.post("/me/location/consent", response_model=ResidentDetail)
+def location_consent(body: ConsentIn, db: Session = Depends(get_db), me: User = Depends(warga_only)):
+    """Izin lokasi SEKALI seumur hidup (PRD §8). agree=false sama dengan mencabut."""
+    resident = _my_resident(db, me)
+    now = utcnow()
+    if body.agree:
+        resident.location_consent_at, resident.location_consent_version = now, body.version or CONSENT_VERSION
+        resident.location_revoked_at = None
+    else:
+        resident.location_revoked_at = now
+        resident.last_lat = resident.last_lng = resident.last_location_at = None  # pencabutan berlaku segera
+    log_action(db, actor_id=me.id, action="location.consent" if body.agree else "location.revoke",
+               entity_type="resident", entity_id=resident.id, new={"version": body.version})
+    db.commit()
+    return _own_view(db, resident)
+
+
+@router.delete("/me/location/consent", response_model=ResidentDetail)
+def revoke_location_consent(db: Session = Depends(get_db), me: User = Depends(warga_only)):
+    return location_consent(ConsentIn(agree=False), db, me)
 
 
 @router.post("/me/status", response_model=StatusLogOut, status_code=status.HTTP_201_CREATED)
-def self_status(body: SelfStatusIn, db: Session = Depends(get_db), me: User = Depends(get_current_user)):
+def self_status(body: SelfStatusIn, background: BackgroundTasks, db: Session = Depends(get_db),
+                me: User = Depends(operational_user)):
     resident = _my_resident(db, me)
-    # "Saya Aman" = laporan mandiri, tidak pernah langsung aman terverifikasi (PRD §12.2)
+    # "Saya Aman" = laporan mandiri, tidak pernah langsung aman terverifikasi (PRD §9.2)
     new_status = SafetyStatus.AMAN_MANDIRI if body.status == "aman" else SafetyStatus.BUTUH_BANTUAN
     now = utcnow()
+    share = body.lat is not None
+    if share and not resident.location_consented:
+        resident.location_consent_at, resident.location_consent_version = now, CONSENT_VERSION
+        resident.location_revoked_at = None
     log = ResidentStatusLog(
         resident_id=resident.id, incident_id=_resolve_incident(db, body.incident_id, resident.region_id),
         status=new_status, source=StatusSource.MANDIRI, need_type=body.need_type, note=body.note,
-        lat=body.lat, lng=body.lng, updated_by=me.id, created_at=now,
+        lat=body.lat if share else None, lng=body.lng if share else None, updated_by=me.id, created_at=now,
     )
-    if body.lat is not None:  # lokasi dibagikan bersama status, atas tindakan warga sendiri
+    if share:
         resident.last_lat, resident.last_lng, resident.last_location_at = body.lat, body.lng, now
     db.add(log)
     db.flush()
+    alert = None
+    if new_status == SafetyStatus.BUTUH_BANTUAN:
+        region = db.get(Region, resident.region_id)
+        need = body.need_type.value if body.need_type else "bantuan"
+        nl = chr(10)
+        alert = emit(
+            db, kind=AlertKind.BANTUAN, internal=True, audience_region_id=resident.region_id, now=now,
+            target_roles=["koordinator", "tim_sar"], dedupe_key=f"bantuan:{resident.id}", dedupe_minutes=10,
+            message=(f"[RIKSA WARGA — WARGA BUTUH BANTUAN]{nl}Wilayah: {region.name if region else '-'}{nl}"
+                     f"Jenis: {need}{nl}Buka aplikasi untuk detail, prioritas, dan peta."))
     log_action(db, actor_id=me.id, action="resident.self_status", entity_type="resident", entity_id=resident.id,
-               new={"status": new_status.value, "incident_id": log.incident_id, "lokasi": body.lat is not None})
+               new={"status": new_status.value, "incident_id": log.incident_id, "lokasi": share})
     db.commit()
+    notifier.schedule(background, db, [alert])
     return log
 
 
 @router.post("/me/location", response_model=ResidentDetail)
-def share_location(body: LocationIn, db: Session = Depends(get_db), me: User = Depends(get_current_user)):
-    """Warga membagikan lokasi terkini / menyimpan lokasi rumah. Hanya terlihat koordinator wilayahnya."""
+def share_location(body: LocationIn, db: Session = Depends(get_db), me: User = Depends(operational_user)):
+    """Lokasi terkini / lokasi rumah warga. Butuh izin sekali; hanya dipakai pihak lain saat Mode Bencana."""
     resident = _my_resident(db, me)
+    if not resident.location_consented:
+        resident.location_consent_at, resident.location_consent_version = utcnow(), CONSENT_VERSION
+        resident.location_revoked_at = None
     if body.kind == "rumah":
         resident.home_lat, resident.home_lng = body.lat, body.lng
     else:
@@ -225,4 +360,4 @@ def share_location(body: LocationIn, db: Session = Depends(get_db), me: User = D
     log_action(db, actor_id=me.id, action="resident.location", entity_type="resident", entity_id=resident.id,
                new={"kind": body.kind})
     db.commit()
-    return resident_view(resident, latest_status_map(db, [resident.id]).get(resident.id), detail=True)
+    return _own_view(db, resident)

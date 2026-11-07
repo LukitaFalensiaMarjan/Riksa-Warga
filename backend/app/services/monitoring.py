@@ -53,4 +53,12 @@ def station_view(db: Session, station: Station, now: datetime) -> dict:
         "latest": obs,
         "status": level_status(station, obs, now),
         "stale": is_stale(obs, now),
+        **condition_info(station, now),
     }
+
+
+def condition_info(station: Station, now: datetime) -> dict:
+    """Kondisi sungai yang ditetapkan pos pantau + penanda 'belum diperbarui' (PRD §17.2)."""
+    stale = station.condition_at is None or now - station.condition_at > timedelta(hours=settings.condition_stale_hours)
+    return {"condition": station.condition or "normal", "condition_at": station.condition_at,
+            "condition_by": station.condition_by, "condition_stale": stale}

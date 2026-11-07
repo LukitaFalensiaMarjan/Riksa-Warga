@@ -9,15 +9,18 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.audit import log_action
-from app.auth import can_access_region, ensure_region_access, get_current_user, require_role, user_scope_ids
+from app.auth import can_access_region, city_scope_ids, ensure_city_access, ensure_region_access, operational_user, require_role, user_scope_ids
 from app.config import settings
 from app.db import get_db, to_utc_naive, utcnow
-from app.models import Hazard, Incident, Region, Report, ReportSource, ReportStatus, Role, User
+from app.models import AlertKind, Hazard, Incident, Region, Report, ReportSource, ReportStatus, Role, User
 from app.schemas import NoteIn, ReasonIn, ReportCreate, ReportMineOut, ReportOut
 from app.services import engine, notifier
+from app.services.alerting import emit
+from app.services.matching import match_report
 
 router = APIRouter(prefix="/reports", tags=["laporan"])
-coordinator = require_role(Role.KOORDINATOR, Role.ADMIN)
+coordinator = require_role(Role.KOORDINATOR, Role.POS_PANTAU, Role.ADMIN)
+reporter = operational_user
 
 FUTURE_TOLERANCE = timedelta(minutes=5)
 
@@ -50,7 +53,8 @@ def _get_report(db: Session, report_id: int) -> Report:
 
 def _readable(db: Session, me: User, report: Report) -> Report:
     if report.reporter_id != me.id and not (
-            me.role in (Role.KOORDINATOR, Role.ADMIN) and can_access_region(db, me, report.region_id)):
+            me.role in (Role.KOORDINATOR, Role.POS_PANTAU, Role.TIM_SAR, Role.RELAWAN, Role.ADMIN)
+            and can_access_region(db, me, report.region_id)):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Tidak berhak melihat laporan ini")
     return report
 
@@ -58,7 +62,7 @@ def _readable(db: Session, me: User, report: Report) -> Report:
 @router.post("", response_model=ReportMineOut, status_code=status.HTTP_201_CREATED)
 @engine.locked
 def create_report(body: ReportCreate, background: BackgroundTasks, db: Session = Depends(get_db),
-                  me: User = Depends(get_current_user)):
+                  me: User = Depends(reporter)):
     if body.client_ref:  # kirim ulang dari antrean offline -> kembalikan laporan yang sama, bukan duplikat
         existing = db.scalar(select(Report).where(Report.reporter_id == me.id, Report.client_ref == body.client_ref))
         if existing is not None:
@@ -77,6 +81,7 @@ def create_report(body: ReportCreate, background: BackgroundTasks, db: Session =
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Waktu kejadian tidak boleh di masa depan")
 
     report = Report(
+        title=body.title, location_name=body.location_name, conditions=body.conditions or [],
         reporter_id=me.id, region_id=region_id, hazard=body.hazard, fire_indicator=body.fire_indicator,
         source=_source_for(me, body.from_sensor), source_mode=body.source_mode, description=body.description,
         lat=body.lat, lng=body.lng, gps_lat=body.gps_lat, gps_lng=body.gps_lng, reported_at=reported_at,
@@ -84,7 +89,16 @@ def create_report(body: ReportCreate, background: BackgroundTasks, db: Session =
     )
     db.add(report)
     db.flush()
-    alerts = engine.process_new_report(db, report, now)
+    if report.hazard == Hazard.LAINNYA:
+        # jenis lain: hanya diteruskan ke pos pantau sebagai informasi, tanpa mesin aturan (PRD §4.4)
+        region = db.get(Region, report.region_id)
+        nl = chr(10)
+        alerts = [emit(db, kind=AlertKind.PANTAU, internal=True, audience_region_id=report.region_id, now=now,
+                       target_roles=["pos_pantau"],
+                       message=("[RIKSA WARGA — LAPORAN LAIN (INFORMASI)]" + nl + "Wilayah: " + (region.name if region else "-")
+                                + nl + report.description[:200] + nl + "Buka aplikasi untuk detail."))]
+    else:
+        alerts = engine.process_new_report(db, report, now)
     log_action(db, actor_id=me.id, action="report.create", entity_type="report", entity_id=report.id,
                new={"hazard": report.hazard.value, "incident_id": report.incident_id,
                     "status": report.status.value, "source_mode": report.source_mode.value})
@@ -94,7 +108,7 @@ def create_report(body: ReportCreate, background: BackgroundTasks, db: Session =
 
 
 @router.get("/mine", response_model=list[ReportMineOut])
-def my_reports(db: Session = Depends(get_db), me: User = Depends(get_current_user)):
+def my_reports(db: Session = Depends(get_db), me: User = Depends(operational_user)):
     return db.scalars(select(Report).where(Report.reporter_id == me.id).order_by(Report.id.desc())).all()
 
 
@@ -108,9 +122,14 @@ def list_reports(
     me: User = Depends(coordinator),
 ):
     q = select(Report).order_by(Report.id.desc()).limit(limit)
-    scope = user_scope_ids(db, me)
-    if scope is not None:
-        q = q.where(Report.region_id.in_(scope))
+    if me.role == Role.KOORDINATOR:
+        scope = user_scope_ids(db, me)
+        if scope is not None:
+            q = q.where(Report.region_id.in_(scope))
+    elif me.role == Role.POS_PANTAU:
+        scope = city_scope_ids(db, me.region_id)
+        if scope is not None:
+            q = q.where(Report.region_id.in_(scope))
     if status_:
         q = q.where(Report.status == status_)
     if hazard:
@@ -120,15 +139,26 @@ def list_reports(
     return db.scalars(q).all()
 
 
+@router.get("/{report_id}/match")
+def report_match(report_id: int, db: Session = Depends(get_db), me: User = Depends(coordinator)):
+    """Panel pencocokan laporan vs sungai, hujan, pelapor lain (FR-025). Pos pantau hanya di wilayah tugasnya."""
+    report = _get_report(db, report_id)
+    if me.role == Role.KOORDINATOR:
+        ensure_region_access(db, me, report.region_id)
+    else:
+        ensure_city_access(db, me, report.region_id)
+    return match_report(db, report, utcnow())
+
+
 @router.get("/{report_id}", response_model=ReportOut)
-def get_report(report_id: int, db: Session = Depends(get_db), me: User = Depends(get_current_user)):
+def get_report(report_id: int, db: Session = Depends(get_db), me: User = Depends(operational_user)):
     return _readable(db, me, _get_report(db, report_id))
 
 
 @router.post("/{report_id}/photo", response_model=ReportMineOut)
 @engine.locked
 def upload_photo(report_id: int, background: BackgroundTasks, file: UploadFile = File(...),
-                 db: Session = Depends(get_db), me: User = Depends(get_current_user)):
+                 db: Session = Depends(get_db), me: User = Depends(operational_user)):
     report = _get_report(db, report_id)
     if report.reporter_id != me.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Hanya pelapor yang dapat melampirkan foto")
@@ -166,7 +196,7 @@ def upload_photo(report_id: int, background: BackgroundTasks, file: UploadFile =
 
 
 @router.get("/{report_id}/photo")
-def get_photo(report_id: int, db: Session = Depends(get_db), me: User = Depends(get_current_user)):
+def get_photo(report_id: int, db: Session = Depends(get_db), me: User = Depends(operational_user)):
     report = _readable(db, me, _get_report(db, report_id))
     if not report.photo_path:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Laporan tidak memiliki foto")
@@ -174,13 +204,14 @@ def get_photo(report_id: int, db: Session = Depends(get_db), me: User = Depends(
 
 
 def _review(db: Session, me: User, report_id: int, new_status: ReportStatus, reason: str | None,
-            background: BackgroundTasks) -> Report:
+            background: BackgroundTasks, condition: str | None = None) -> Report:
     report = _get_report(db, report_id)
-    ensure_region_access(db, me, report.region_id)
+    if me.role == Role.KOORDINATOR:
+        ensure_region_access(db, me, report.region_id)
+    else:
+        ensure_city_access(db, me, report.region_id)
     if report.status in (ReportStatus.TERVERIFIKASI, ReportStatus.DITOLAK):
         raise HTTPException(status.HTTP_409_CONFLICT, f"Laporan sudah {report.status.value}")
-    if report.status == ReportStatus.DUPLIKAT and new_status == ReportStatus.TERVERIFIKASI:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Laporan duplikat; verifikasi laporan aslinya")
     now = utcnow()
     old = report.status
     report.status, report.status_reason = new_status, reason
@@ -188,9 +219,58 @@ def _review(db: Session, me: User, report_id: int, new_status: ReportStatus, rea
     db.flush()
     action = "report.verify" if new_status == ReportStatus.TERVERIFIKASI else "report.reject"
     log_action(db, actor_id=me.id, action=action, entity_type="report", entity_id=report.id,
-               old={"status": old.value}, new={"status": new_status.value}, reason=reason)
+               old={"status": old.value}, new={"status": new_status.value, "condition": condition}, reason=reason)
     incident = db.get(Incident, report.incident_id) if report.incident_id else None
     alerts = engine.evaluate_incident(db, incident, now) if incident else []
+
+    # Jika pos pantau menerima laporan dan menetapkan kondisi waspada atau meluap:
+    if new_status == ReportStatus.TERVERIFIKASI and condition in ("waspada", "meluap"):
+        from app.services.alerting import emit
+        cond_label = condition.upper()
+        alert_lvl = AlertLevel.WASPADA if condition == "waspada" else AlertLevel.EVAKUASI
+        if incident:
+            incident.level = alert_lvl
+            incident.verification = Verification.TERVERIFIKASI
+            db.flush()
+
+        loc_str = getattr(report, "location_name", None) or report.title or f"Koordinat {report.lat:.4f}, {report.lng:.4f}"
+        conds_list = getattr(report, "conditions", []) or []
+        conds_str = ", ".join(conds_list) if conds_list else "Kenaikan debit air sungai"
+
+        lines = [
+            f"[PERINGATAN BENCANA BANJIR BANDUNG — {cond_label}]",
+            f"Lokasi Kejadian: {loc_str}",
+            f"Laporan: {report.title or 'Luapan Sungai'}",
+            f"Kondisi Lapangan: {conds_str}",
+            f"Status Pos Pantau: {cond_label} (Terverifikasi)",
+            f"Diverifikasi oleh: {me.name} (Pos Pantau)",
+            f"Waktu: {now.strftime('%d/%m/%y, %H.%M WIB')}",
+        ]
+        if reason:
+            lines.append(f"Catatan Petugas: {reason.strip()}")
+        if condition == "meluap":
+            lines.append("TINDAKAN: Status DARURAT MELUAP! Warga di bantaran sungai dan kawasan rawan genangan segera evakuasi ke shelter aman terdekat.")
+        else:
+            lines.append("TINDAKAN: Status WASPADA. Warga diimbau siaga, amankan dokumen berharga, dan pantau rute evakuasi terdekat.")
+        lines.append("Riksa Warga Kota Bandung — Saling Jaga, Saling Kabari")
+
+        alert = emit(
+            db,
+            kind=AlertKind.LEVEL,
+            level=alert_lvl,
+            verification=Verification.TERVERIFIKASI,
+            audience_region_id=report.region_id,
+            internal=False,  # Siarkan ke semua role!
+            message="\n".join(lines),
+            incident_id=report.incident_id,
+            created_by=me.id,
+            reason=f"Verifikasi laporan warga #{report.id} ({cond_label}) oleh {me.name}",
+            sms=True,
+            now=now,
+        )
+        if alert:
+            alerts.append(alert)
+
     db.commit()
     notifier.schedule(background, db, alerts)
     return report
@@ -200,7 +280,7 @@ def _review(db: Session, me: User, report_id: int, new_status: ReportStatus, rea
 @engine.locked
 def verify_report(report_id: int, body: NoteIn, background: BackgroundTasks, db: Session = Depends(get_db),
                   me: User = Depends(coordinator)):
-    return _review(db, me, report_id, ReportStatus.TERVERIFIKASI, body.note, background)
+    return _review(db, me, report_id, ReportStatus.TERVERIFIKASI, body.note, background, condition=body.condition)
 
 
 @router.post("/{report_id}/reject", response_model=ReportOut)

@@ -12,17 +12,19 @@ API FastAPI + MySQL. Rencana lengkap: [`../docs/PLAN_RIKSA_WARGA.md`](../docs/PL
    pip install -r requirements.txt
    ```
 3. Salin `.env.example` ke `.env`, isi `JWT_SECRET` dan sesuaikan `DATABASE_URL`.
-4. Buat database, tabel, wilayah demo, dan akun demo:
+4. Buat database, tabel, wilayah demo, akun demo, dan shelter nyata Kota Bandung (OpenStreetMap):
    ```bash
-   python -m scripts.seed
+   python -m scripts.seed --reset --demo-verify
    ```
+   `--reset` MENGHAPUS semua tabel lalu membuat ulang (wajib setelah skema PRD v2). `--demo-verify` menandai shelter dalam radius 6 km dari lokasi demo sebagai terverifikasi hanya agar navigasi bisa dicoba; di lapangan koordinator yang memverifikasi.
 5. Jalankan API, lalu buka http://127.0.0.1:8000/docs:
    ```bash
    uvicorn app.main:app --reload
    ```
 
-Akun demo: `admin`, `koord_rw01`, `koord_rw02`, `pospantau1`, `pospantau2`, `relawan1`, `warga1`, `warga2`, `warga3`, semua memakai `SEED_PASSWORD` dari `.env`.
-Seed juga membuat 2 pos pantau (hulu & hilir), 6 data warga (3 tanpa akun, 3 rentan), dan 3 shelter.
+Akun demo: `admin`, `koord_rw01`, `koord_rw02`, `pospantau1`, `pospantau2`, `timsar1`, `timsar2`, `warga1`, `warga2`, `warga3`, semua memakai `SEED_PASSWORD` dari `.env`.
+Seed juga membuat 2 pos pantau (hulu & hilir), 6 data warga, 4 anggota keluarga, dan 59 kandidat shelter dari OpenStreetMap (belum terverifikasi kecuali `--demo-verify`).
+Jalankan HANYA satu proses uvicorn (kunci mesin kejadian berlaku per proses).
 
 Telegram default `TELEGRAM_MODE=mock`: pengiriman hanya dicatat (status `mock`). Untuk kirim sungguhan isi `TELEGRAM_MODE=live`, `TELEGRAM_BOT_TOKEN`, dan `telegram_chat_id` akun penerima.
 
@@ -32,12 +34,24 @@ Setelah `uvicorn` jalan, buka **http://127.0.0.1:8000/** (Swagger API tetap di `
 
 | Peran | Tab |
 |---|---|
-| Warga / Relawan | Lapor Kejadian, Laporan Saya, Status Saya, Peringatan, Pos Pantau, Shelter |
-| Pos Pantau | Pos Pantau (input tinggi air + grafik), Lapor Kejadian, Laporan Saya, Peringatan |
-| Koordinator | Dashboard (peta), Kejadian, Laporan, Warga, Shelter, Pos Pantau, Cuaca & Aturan, Peringatan, Lapor |
-| Admin | semua tab koordinator + Admin (akun, aturan, audit log) |
+| Warga | Beranda (Mode Bencana, izin lokasi, Saya Aman / Butuh Bantuan, keluarga), Live, Prediksi, Peta Evakuasi, Laporan Saya, Peringatan, Shelter, Lapor |
+| Koordinator | Dashboard, Live, Prediksi, Prioritas, Tugas Tim SAR, Data Warga, Data Keluarga, Peta & Rute, Shelter, Peringatan |
+| Pos Pantau | Live (3 tombol kondisi sungai), Prediksi, Laporan & Verifikasi (pencocokan data), Kejadian & Level, Lapor, Peringatan (siaran + koreksi) |
+| Tim SAR | Peta SAR (warga butuh bantuan), Tugas (ambil/terima/tolak/selesai + laporan pasca-bantuan), Live, Prediksi, Peta, Shelter, Peringatan |
+| Admin | hanya Kelola User + audit log (hanya-baca) |
 
-Form lapor punya "titik contoh" (Hulu 1-3, Hilir 1-3, Kebakaran) supaya demo cepat. Peta memakai Leaflet + OpenStreetMap dari internet.
+Peta memakai Leaflet + OpenStreetMap dari internet. Prakiraan hujan dari Open-Meteo (butuh internet; bila gagal tampil "tidak tersedia", bukan angka palsu). Data tinggi air simulator diberi label SIMULASI.
+
+## SMS (Twilio)
+
+Default `SMS_MODE=mock`: SMS hanya dicatat di status pengiriman. Untuk kirim sungguhan isi di `.env`:
+```
+SMS_MODE=twilio
+TWILIO_ACCOUNT_SID=...
+TWILIO_AUTH_TOKEN=...
+TWILIO_FROM=+1xxxxxxxxxx        # atau TWILIO_MESSAGING_SERVICE_SID
+```
+Penerima harus: mengisi nomor ponsel di Profil, mencentang persetujuan SMS, dan nomor valid (08xx otomatis menjadi +628xx). SMS hanya untuk peristiwa berat (pengumuman pos pantau, kondisi sungai Waspada/Meluap, siaga/evakuasi, prediksi tinggi, permintaan bantuan). Batas `SMS_MAX_PER_HOUR` per nomor. Akun trial Twilio hanya bisa mengirim ke nomor yang sudah diverifikasi di konsol Twilio. Admin tidak pernah menerima peringatan.
 
 ## Telegram
 

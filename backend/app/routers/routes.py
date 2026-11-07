@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit import log_action
-from app.auth import area_scope_ids, ensure_region_access, get_current_user, require_role
+from app.auth import city_scope_ids, ensure_region_access, operational_user, require_role
 from app.db import get_db, utcnow
 from app.models import (
     EvacuationRoute,
@@ -24,8 +24,8 @@ from app.services.geo import haversine_m
 from app.services.routing import HAZARD_NEAR_M, INCIDENT_NEAR_M, hazards_near, osrm_routes, straight_line
 
 router = APIRouter(tags=["peta evakuasi"])
-coordinator = require_role(Role.KOORDINATOR, Role.ADMIN)
-field_reporter = require_role(Role.KOORDINATOR, Role.ADMIN, Role.RELAWAN, Role.PETUGAS, Role.POS_PANTAU)
+coordinator = require_role(Role.KOORDINATOR)
+field_reporter = require_role(Role.KOORDINATOR, Role.TIM_SAR, Role.POS_PANTAU)
 HAZARD_LABEL = {HazardKind.TERTUTUP: "Jalan tertutup", HazardKind.GENANGAN: "Genangan / banjir",
                 HazardKind.API: "Api / kebakaran", HazardKind.POHON: "Pohon tumbang",
                 HazardKind.KABEL: "Kabel listrik", HazardKind.LAINNYA: "Bahaya lain"}
@@ -35,7 +35,7 @@ ROUTE_LABEL = {RouteStatus.TERVERIFIKASI: "Rute resmi terverifikasi petugas",
 
 
 def _area(db: Session, me: User) -> set[int] | None:
-    return None if me.role == Role.ADMIN else area_scope_ids(db, me.region_id)
+    return city_scope_ids(db, me.region_id)  # sumber daya kota (shelter, rute, bahaya) terlihat se-kota
 
 
 def _in_area(q, col, area):
@@ -59,7 +59,7 @@ def active_hazards(db: Session, area: set[int] | None) -> list[dict]:
 
 @router.get("/road-conditions", response_model=list[RoadConditionOut])
 def list_road_conditions(include_resolved: bool = False, db: Session = Depends(get_db),
-                         me: User = Depends(get_current_user)):
+                         me: User = Depends(operational_user)):
     q = select(RoadCondition).order_by(RoadCondition.id.desc())
     if not include_resolved:
         q = q.where(RoadCondition.is_active.is_(True))
@@ -99,7 +99,7 @@ def resolve_road_condition(rc_id: int, db: Session = Depends(get_db), me: User =
 # ---------- rute evakuasi resmi ----------
 
 @router.get("/evacuation-routes", response_model=list[EvacRouteOut])
-def list_evac_routes(db: Session = Depends(get_db), me: User = Depends(get_current_user)):
+def list_evac_routes(db: Session = Depends(get_db), me: User = Depends(operational_user)):
     q = select(EvacuationRoute).order_by(EvacuationRoute.id)
     return db.scalars(_in_area(q, EvacuationRoute.region_id, _area(db, me))).all()
 
@@ -142,7 +142,7 @@ def set_evac_route_status(route_id: int, body: EvacRouteStatusIn, db: Session = 
 @router.get("/routing/shelter")
 def route_to_shelter(lat: float = Query(ge=-90, le=90), lng: float = Query(ge=-180, le=180),
                      shelter_id: int | None = None, db: Session = Depends(get_db),
-                     me: User = Depends(get_current_user)):
+                     me: User = Depends(operational_user)):
     area = _area(db, me)
     shelters = list(db.scalars(_in_area(select(Shelter).where(Shelter.is_verified.is_(True),
                                                                  Shelter.status.in_(AVAILABLE)),
@@ -178,3 +178,20 @@ def route_to_shelter(lat: float = Query(ge=-90, le=90), lng: float = Query(ge=-1
                             for r in official],
         "note": "Ikuti arahan petugas. Rute terpendek belum tentu aman; utamakan rute resmi terverifikasi.",
     }
+
+
+@router.get("/routing/point")
+def route_to_point(lat: float = Query(ge=-90, le=90), lng: float = Query(ge=-180, le=180),
+                   to_lat: float = Query(ge=-90, le=90), to_lng: float = Query(ge=-180, le=180),
+                   db: Session = Depends(get_db), me: User = Depends(operational_user)):
+    """Rute jalan kaki titik-ke-titik (mis. Tim SAR menuju warga). Rute umum, bukan jaminan aman."""
+    hazards = active_hazards(db, _area(db, me))
+    routes = osrm_routes(lat, lng, to_lat, to_lng)
+    source = "osrm" if routes else "garis_lurus"
+    for rt in (routes := routes or [straight_line(lat, lng, to_lat, to_lng)]):
+        rt["hazards"] = hazards_near(rt["points"], hazards)
+    best = min(routes, key=lambda r: (len(r["hazards"]), r["duration_s"]))
+    warnings = [f"Rute melewati/dekat: {h['label']} (±{h['distance_m']} m)" for h in best["hazards"]]
+    return {"from": [lat, lng], "to": [to_lat, to_lng], "source": source, **best, "warnings": warnings,
+            "label": ("Rute jalan dari peta umum — BELUM diverifikasi aman" if source == "osrm"
+                      else "Garis lurus (tanpa data jalan) — hanya petunjuk arah")}

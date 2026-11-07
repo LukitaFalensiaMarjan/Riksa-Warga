@@ -4,19 +4,34 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit import log_action
-from app.auth import ensure_region_access, get_current_user, region_ancestor_ids, region_scope_ids, require_role
+from app.auth import ensure_region_access, operational_user, region_ancestor_ids, region_scope_ids, require_role
 from app.db import get_db, to_utc_naive, utcnow
 from app.models import Hazard, Region, Role, RuleConfig, User, WeatherContext
 from app.schemas import RuleOut, WeatherIn, WeatherOut
-from app.services import engine, notifier
+from app.services import engine, forecast, notifier
 from app.services.rules import RULES_NOTE, RuleParams, get_rules
+from app.services.weather_api import get_bandung_live_weather
 
 router = APIRouter(tags=["konteks & aturan"])
-coordinator = require_role(Role.KOORDINATOR, Role.ADMIN)
+coordinator = require_role(Role.KOORDINATOR, Role.POS_PANTAU, Role.ADMIN)
+
+
+@router.get("/weather/live")
+async def live_weather_api(me: User = Depends(operational_user)):
+    """Data cuaca realtime Bandung dari Open-Meteo API (hujan mm/jam, suhu, kelembapan)."""
+    return await get_bandung_live_weather()
+
+
+
+@router.get("/forecast")
+def forecast_risk(db: Session = Depends(get_db), me: User = Depends(operational_user)):
+    """Prakiraan hujan + prediksi Potensi Banjir (Rendah/Sedang/Tinggi) beserta alasan, jendela waktu, keyakinan.
+    PERKIRAAN BANTU, bukan deteksi banjir (PRD §7.1)."""
+    return forecast.predict(db)
 
 
 @router.get("/weather", response_model=list[WeatherOut])
-def list_weather(db: Session = Depends(get_db), me: User = Depends(get_current_user)):
+def list_weather(db: Session = Depends(get_db), me: User = Depends(operational_user)):
     q = select(WeatherContext).order_by(WeatherContext.id)
     if me.role != Role.ADMIN:
         regions = region_scope_ids(db, me.region_id) | set(region_ancestor_ids(db, me.region_id))
@@ -54,7 +69,8 @@ def set_weather(body: WeatherIn, background: BackgroundTasks, db: Session = Depe
 @router.get("/rules", response_model=list[RuleOut])
 def list_rules(db: Session = Depends(get_db), _: User = Depends(coordinator)):
     return [{"hazard": h, "params": get_rules(db, h).model_dump(mode="json"),
-             "is_default": db.get(RuleConfig, h) is None, "note": RULES_NOTE} for h in Hazard]
+             "is_default": db.get(RuleConfig, h) is None, "note": RULES_NOTE}
+            for h in (Hazard.BANJIR, Hazard.KEBAKARAN)]
 
 
 @router.put("/rules/{hazard}", response_model=RuleOut)

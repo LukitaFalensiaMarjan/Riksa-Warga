@@ -11,6 +11,7 @@ os.environ.update({
     "TELEGRAM_BOT_TOKEN": "",
     "TELEGRAM_DEFAULT_CHAT_ID": "",
     "ENGINE_TICK_SECONDS": "0",
+    "SIMULATOR_INTERVAL_SECONDS": "0",
     "REPORT_RATE_LIMIT_PER_10MIN": "10",
     "OBSERVATION_STALE_MINUTES": "30",
 })
@@ -84,6 +85,11 @@ def ids(db):
     out = {u.username: u.id for u in db.scalars(select(User))}
     for model in (Region, Station, Resident, Shelter):
         out.update({row.name: row.id for row in db.scalars(select(model))})
+    for s in db.scalars(select(Station)):
+        if "Gandok" in s.name or "Hulu" in s.name:
+            out.setdefault("Pos Pantau Hulu", s.id)
+        if "Viaduct" in s.name or "Citepus" in s.name or "Hilir" in s.name:
+            out.setdefault("Pos Pantau Hilir", s.id)
     return out
 
 

@@ -48,6 +48,14 @@ def get_current_user(
     return user
 
 
+def operational_user(user: User = Depends(get_current_user)) -> User:
+    """Semua endpoint data operasional (sungai, laporan, warga, shelter, peringatan). Admin hanya kelola
+    pengguna + audit, tidak melihat data operasional/pribadi (PRD §5.3)."""
+    if user.role == Role.ADMIN:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin tidak mengakses data operasional")
+    return user
+
+
 def require_role(*roles: Role):
     def dep(user: User = Depends(get_current_user)) -> User:
         if user.role not in roles:
@@ -88,6 +96,22 @@ def area_scope_ids(db: Session, region_id: int) -> set[int]:
     """Seluruh kelurahan tempat region_id berada (untuk pos pantau, shelter, kejadian sekitar)."""
     root = ancestor_at_level(db, region_id, RegionLevel.KELURAHAN) or region_id
     return region_scope_ids(db, root)
+
+
+def city_root_id(db: Session, region_id: int) -> int:
+    """Kota tempat region_id berada; bila hierarki tak punya level kota, pakai kelurahan lalu region itu sendiri."""
+    return (ancestor_at_level(db, region_id, RegionLevel.KABUPATEN_KOTA)
+            or ancestor_at_level(db, region_id, RegionLevel.KELURAHAN) or region_id)
+
+
+def city_scope_ids(db: Session, region_id: int) -> set[int]:
+    """Seluruh wilayah di kota yang sama: sumber daya kota (sungai, shelter, rute) terlihat lintas kelurahan."""
+    return region_scope_ids(db, city_root_id(db, region_id))
+
+
+def ensure_city_access(db: Session, user: User, region_id: int) -> None:
+    if region_id not in city_scope_ids(db, user.region_id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Di luar kota kewenangan")
 
 
 def user_scope_ids(db: Session, user: User) -> set[int] | None:

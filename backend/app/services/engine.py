@@ -105,13 +105,14 @@ def _public_audience(db: Session, incident: Incident) -> int:
 
 def _add_alert(db: Session, incident: Incident | None, kind: AlertKind, text: str, *, internal: bool,
                audience_region_id: int, now: datetime, actor_id: int | None = None,
-               reason: str | None = None, station_id: int | None = None) -> Alert:
+               reason: str | None = None, station_id: int | None = None,
+               target_roles: list[str] | None = None, sms: bool = False) -> Alert:
     alert = Alert(
         incident_id=incident.id if incident else None, station_id=station_id, kind=kind,
         level=incident.level if incident else None,
         verification=incident.verification if incident else None,
         audience_region_id=audience_region_id, internal=internal, message=text, reason=reason,
-        created_by=actor_id, created_at=now,
+        created_by=actor_id, created_at=now, target_roles=target_roles, sms=sms,
     )
     db.add(alert)
     db.flush()
@@ -355,7 +356,7 @@ def _apply_level(db: Session, incident: Incident, new_level: AlertLevel, *, acto
     audience = _public_audience(db, incident)
     text = messages.level_message(db, incident, kind, old, audience, reason, now)
     return _add_alert(db, incident, kind, text, internal=False, audience_region_id=audience, now=now,
-                      actor_id=actor_id, reason=reason)
+                      actor_id=actor_id, reason=reason, sms=new_level in (AlertLevel.SIAGA, AlertLevel.EVAKUASI))
 
 
 def _require_active(incident: Incident) -> None:
@@ -411,7 +412,7 @@ def _end_incident(db: Session, incident: Incident, user: User, reason: str, now:
         kind, text = AlertKind.SELESAI, messages.close_message(db, incident, audience, reason, now)
     # tidak pernah ada alert publik -> pembatalan cukup internal
     return _add_alert(db, incident, kind, text, internal=not public, audience_region_id=audience, now=now,
-                      actor_id=user.id, reason=reason)
+                      actor_id=user.id, reason=reason, sms=public)  # koreksi/pembatalan lewat kanal yang sama
 
 
 def cancel_incident(db: Session, incident: Incident, user: User, reason: str, now: datetime) -> Alert:

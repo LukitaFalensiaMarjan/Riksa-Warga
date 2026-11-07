@@ -124,7 +124,9 @@ img.photo { max-width: 240px; border-radius: 10px; display: block; }
 .me-dot { width: 18px; height: 18px; border-radius: 50%; background: var(--blue); border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(10,100,184,.25); }
 .pulse { animation: pulse 1.6s infinite; }
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(220,38,38,.55); } 70% { box-shadow: 0 0 0 16px rgba(220,38,38,0); } 100% { box-shadow: 0 0 0 0 rgba(220,38,38,0); } }
-@media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
+.target-pulse { animation: target-pulse-anim 1.4s infinite; }
+@keyframes target-pulse-anim { 0% { box-shadow: 0 0 0 0 rgba(37,99,235,.8); } 70% { box-shadow: 0 0 0 18px rgba(37,99,235,0); } 100% { box-shadow: 0 0 0 0 rgba(37,99,235,0); } }
+@media (prefers-reduced-motion: reduce) { .pulse, .target-pulse { animation: none; } }
 
 /* ---------- beranda warga ---------- */
 .hero { border-radius: 18px; padding: 18px 20px; color: #fff; margin-bottom: 16px; background: linear-gradient(135deg, var(--teal), var(--green)); box-shadow: var(--shadow); }
@@ -192,3 +194,64 @@ svg.chart { width: 100%; height: auto; background: #fff; border: 1px solid var(-
   .card { box-shadow: none; border: 0; padding: 0; }
   body { background: #fff; font-size: 12px; }
 }
+
+/* ---------- Live Monitoring & Controller Pos Pantau ---------- */
+@keyframes pulse-live {
+  0% { transform: scale(0.96); opacity: 0.85; }
+  50% { transform: scale(1.04); opacity: 1; }
+  100% { transform: scale(0.96); opacity: 0.85; }
+}
+.pulse-badge {
+  display: inline-flex; align-items: center; gap: 7px; font-weight: 800; font-size: 12px;
+  background: rgba(220, 38, 38, 0.12); color: #dc2626; border: 1px solid #f87171;
+  padding: 4px 10px; border-radius: 99px; animation: pulse-live 1.6s infinite ease-in-out;
+}
+.pulse-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: #dc2626; display: inline-block;
+}
+.weather-hero {
+  background: linear-gradient(135deg, var(--navy), #0e7c86);
+  color: #fff; border-radius: var(--r); padding: 20px 22px; margin-bottom: 16px;
+  box-shadow: 0 4px 20px rgba(11, 58, 110, 0.15);
+}
+.weather-hero .w-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-top: 14px;
+}
+.weather-hero .w-item {
+  background: rgba(255, 255, 255, 0.12); backdrop-filter: blur(4px); padding: 12px 14px; border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+.weather-hero .w-item b { font-size: 19px; display: block; line-height: 1.2; font-weight: 800; }
+.weather-hero .w-item span { font-size: 12px; opacity: 0.9; }
+
+.station-live-card {
+  border-radius: var(--r); border: 2px solid var(--line); padding: 18px 20px; margin-bottom: 16px;
+  background: #fff; box-shadow: var(--shadow); transition: all 0.2s;
+}
+.station-live-card.c-normal { border-color: #a3e6c5; }
+.station-live-card.c-waspada { border-color: #fbd89a; background: #fffdfa; }
+.station-live-card.c-meluap { border-color: #f87171; background: #fffafa; }
+
+.water-gauge {
+  font-size: 38px; font-weight: 900; line-height: 1; margin: 8px 0; letter-spacing: -0.02em;
+}
+.water-gauge.g-normal { color: #0f9d6b; }
+.water-gauge.g-waspada { color: #d97706; }
+.water-gauge.g-meluap { color: #dc2626; animation: pulse-live 1.4s infinite; }
+
+.condition-btns {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px;
+}
+.btn-cond {
+  flex: 1; min-width: 120px; padding: 12px 14px; font-size: 14px; font-weight: 800;
+  border-radius: 12px; cursor: pointer; border: 2px solid transparent; transition: all 0.2s;
+  text-align: center; display: flex; flex-direction: column; align-items: center; gap: 3px;
+}
+.btn-cond small { font-size: 11px; font-weight: 600; opacity: 0.85; }
+.btn-cond.normal { background: #eaf8f1; color: #0f9d6b; border-color: #a3e6c5; }
+.btn-cond.normal.active { background: #0f9d6b; color: #fff; border-color: #0c7a53; box-shadow: 0 0 14px rgba(15, 157, 107, 0.4); }
+.btn-cond.waspada { background: #fef7ea; color: #d97706; border-color: #fbd89a; }
+.btn-cond.waspada.active { background: #d97706; color: #fff; border-color: #b45309; box-shadow: 0 0 14px rgba(217, 119, 6, 0.4); }
+.btn-cond.meluap { background: #fde8e8; color: #dc2626; border-color: #fca5a5; }
+.btn-cond.meluap.active { background: #dc2626; color: #fff; border-color: #991b1b; box-shadow: 0 0 14px rgba(220, 38, 38, 0.4); }
+

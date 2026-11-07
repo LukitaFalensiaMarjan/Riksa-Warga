@@ -8,8 +8,9 @@ from sqlalchemy.orm import Session
 from app.auth import area_scope_ids, region_ancestor_ids, require_role, user_scope_ids
 from app.db import get_db, utcnow
 from app.models import Alert, Incident, IncidentStatus, Report, Resident, Role, Station, User, WeatherContext
-from app.routers.alerts import visible_alerts
+from app.routers.alerts import filter_for_role, visible_alerts
 from app.schemas import AlertOut, IncidentOut, StationOut, WeatherOut
+from app.services.disaster import mode_regions
 from app.services.monitoring import station_view
 from app.services.residents import help_queue, status_summary
 from app.services.rules import get_rules
@@ -18,7 +19,7 @@ router = APIRouter(tags=["dashboard"])
 
 
 @router.get("/dashboard")
-def dashboard(db: Session = Depends(get_db), me: User = Depends(require_role(Role.KOORDINATOR, Role.ADMIN))):
+def dashboard(db: Session = Depends(get_db), me: User = Depends(require_role(Role.KOORDINATOR))):
     now = utcnow()
     scope = user_scope_ids(db, me)
 
@@ -50,10 +51,11 @@ def dashboard(db: Session = Depends(get_db), me: User = Depends(require_role(Rol
 
     residents = list(db.scalars(scoped(select(Resident), Resident.region_id)))
     focus = incidents[0].id if incidents else None
-    alerts = db.scalars(visible_alerts(db, me).order_by(Alert.id.desc()).limit(10)).all()
+    alerts = filter_for_role(list(db.scalars(visible_alerts(db, me).order_by(Alert.id.desc()).limit(40))), me)[:10]
 
     return {
         "generated_at": now.isoformat(),
+        "mode_active": bool(mode_regions(db, now)),
         "incidents": incident_rows,
         "reports_24h": {
             "total": len(reports),

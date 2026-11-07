@@ -62,6 +62,7 @@ class UserOut(ORM):
 class MeOut(UserOut):
     phone: str | None
     telegram_chat_id: str | None
+    sms_opt_in: bool
 
 
 class ProfileUpdate(BaseModel):
@@ -69,6 +70,7 @@ class ProfileUpdate(BaseModel):
 
     phone: str | None = Field(default=None, max_length=32)
     telegram_chat_id: str | None = Field(default=None, max_length=64, pattern=r"^(-?\d{1,20})?$")
+    sms_opt_in: bool | None = None  # persetujuan menerima SMS peringatan (PRD §7.3)
 
 
 class UserCreate(BaseModel):
@@ -90,6 +92,7 @@ DeactivateIn = ReasonIn
 
 class NoteIn(BaseModel):
     note: str | None = Field(default=None, max_length=500)
+    condition: str | None = Field(default=None, max_length=32)
 
 
 class RegionOut(ORM):
@@ -120,9 +123,12 @@ class AuditLogOut(ORM):
 # ---------- Laporan ----------
 
 class ReportCreate(BaseModel):
-    hazard: Hazard
+    hazard: Hazard = Hazard.BANJIR
+    title: str | None = Field(default=None, max_length=200)
+    location_name: str | None = Field(default=None, max_length=200)
+    conditions: list[str] = Field(default_factory=list)
     fire_indicator: FireIndicator | None = None
-    description: str = Field(min_length=5, max_length=2000)
+    description: str = Field(min_length=3, max_length=2000)
     lat: float = Lat
     lng: float = Lng
     gps_lat: float | None = Field(default=None, ge=-90, le=90)
@@ -153,6 +159,9 @@ class ScoreFactor(BaseModel):
 class ReportMineOut(ORM):
     id: int
     incident_id: int | None
+    title: str | None = None
+    location_name: str | None = None
+    conditions: list[str] = []
     hazard: Hazard
     fire_indicator: FireIndicator | None
     description: str
@@ -234,6 +243,10 @@ class StationOut(ORM):
     latest: ObservationOut | None
     status: str  # normal | waspada | bahaya | data_kedaluwarsa | tidak_ada_data
     stale: bool
+    condition: str  # kondisi sungai dari tombol pos pantau: normal | waspada | meluap
+    condition_at: datetime | None
+    condition_by: int | None
+    condition_stale: bool  # belum diperbarui pos pantau dalam beberapa jam
 
 
 class TrendOut(BaseModel):
@@ -286,6 +299,9 @@ class AlertOut(ORM):
     reason: str | None
     created_by: int | None
     created_at: datetime
+    target_roles: list[str] | None = None
+    sms: bool = False
+    parent_alert_id: int | None = None
 
 
 class DeliveryOut(ORM):
@@ -296,6 +312,20 @@ class DeliveryOut(ORM):
     status: DeliveryStatus
     error: str | None
     created_at: datetime
+
+
+class BroadcastAlertIn(BaseModel):
+    message: str = Field(min_length=3, max_length=1000)
+    level: AlertLevel = AlertLevel.WASPADA
+    region_id: int | None = None
+    basis_report_id: int | None = None  # laporan terverifikasi yang menjadi dasar (PRD §7.2)
+    basis_note: str | None = Field(default=None, max_length=500)  # atau alasan pengamatan langsung
+
+
+class AlertCorrectIn(BaseModel):
+    cancel: bool = False  # True = batalkan; False = koreksi dengan pesan baru
+    reason: str = Field(min_length=3, max_length=500)
+    message: str | None = Field(default=None, max_length=1000)  # wajib untuk koreksi
 
 
 # ---------- Warga ----------
@@ -358,6 +388,8 @@ class ResidentOut(BaseModel):
     last_lat: float | None
     last_lng: float | None
     last_location_at: datetime | None
+    location_consent_at: datetime | None = None
+    location_revoked_at: datetime | None = None
 
 
 class ResidentDetail(ResidentOut):
@@ -419,13 +451,15 @@ class StatusLogOut(ORM):
     note: str | None
     lat: float | None
     lng: float | None
-    updated_by: int
+    updated_by: int | None  # None = sistem
     created_at: datetime
 
 
 class HelpRequestOut(BaseModel):
     resident: ResidentOut
     is_vulnerable: bool
+    family_vulnerability: list[str] = []
+    suspected: bool = False  # True = diduga (tak menjawab), bukan pernyataan warga
     need_type: NeedType | None
     note: str | None
     requested_at: datetime
@@ -465,6 +499,8 @@ class ShelterOut(ORM):
     is_verified: bool
     verified_at: datetime | None
     updated_at: datetime
+    kind: str | None = None
+    source: str | None = None
     occupancy: int = 0  # jumlah orang yang check-in
 
 
@@ -622,3 +658,73 @@ class EvacRouteOut(ORM):
     verified_by: int | None
     verified_at: datetime | None
     updated_at: datetime
+
+
+# ---------- PRD v2: izin lokasi, keluarga, SAR, pengguna ----------
+
+class ConsentIn(BaseModel):
+    agree: bool
+    version: str = Field(default="v1", max_length=16)
+
+
+class FamilyIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    relation: str | None = Field(default=None, max_length=40)
+    age: int | None = Field(default=None, ge=0, le=120)
+    vulnerability: list[Vulnerability] = []
+    phone: str | None = Field(default=None, max_length=32)
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class FamilyOut(ORM):
+    id: int
+    resident_id: int
+    name: str
+    relation: str | None
+    age: int | None
+    vulnerability: list[Vulnerability]
+    phone: str | None
+    note: str | None
+    created_at: datetime
+
+
+class TaskRejectIn(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class RescueReportIn(BaseModel):
+    people_helped: int = Field(ge=0, le=500)
+    condition: Literal["selamat", "luka", "butuh_rujukan"]
+    destination: str | None = Field(default=None, max_length=160)
+    obstacles: str | None = Field(default=None, max_length=1000)
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class RescueReportOut(ORM):
+    id: int
+    task_id: int
+    people_helped: int
+    condition: str
+    destination: str | None
+    obstacles: str | None
+    notes: str | None
+    reported_by: int
+    created_at: datetime
+
+
+class UserUpdate(BaseModel):
+    """Admin mengatur role/wilayah/kontak akun (FR-002)."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    role: Role | None = None
+    region_id: int | None = None
+    phone: str | None = Field(default=None, max_length=32)
+
+
+class PasswordResetIn(BaseModel):
+    password: str = Field(min_length=8, max_length=72)
+
+
+class ConditionIn(BaseModel):
+    condition: Literal["normal", "waspada", "meluap"]
+    note: str | None = Field(default=None, max_length=300)

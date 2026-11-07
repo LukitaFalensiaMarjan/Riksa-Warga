@@ -1,0 +1,599 @@
+{
+ "_meta": {
+  "sumber": "OpenStreetMap contributors (ODbL), query Overpass: amenity=shelter|community_centre|townhall, emergency=assembly_point, leisure=stadium di area administratif Kota Bandung",
+  "diambil": "2026-11-07",
+  "catatan": "KANDIDAT, belum terverifikasi. Koordinator wajib memverifikasi (kapasitas, akses, kontak) sebelum direkomendasikan ke warga (PRD §12.1)."
+ },
+ "shelters": [
+  {
+   "osm_ref": "way/383655698",
+   "name": "Aula RW.002",
+   "kind": "Balai warga / gedung serbaguna",
+   "lat": -6.942743,
+   "lng": 107.664552,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/4543278791",
+   "name": "Balai Sartika",
+   "kind": "Balai warga / gedung serbaguna",
+   "lat": -6.942249,
+   "lng": 107.62549,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/7288059485",
+   "name": "Bandung Bee Sanctuary",
+   "kind": "Balai warga / gedung serbaguna",
+   "lat": -6.869968,
+   "lng": 107.621222,
+   "address": "Jalan Insinyur Haji Juanda 438",
+   "capacity": null,
+   "contact": "+62 821 1666 1590"
+  },
+  {
+   "osm_ref": "node/7277456985",
+   "name": "Common Room",
+   "kind": "Balai warga / gedung serbaguna",
+   "lat": -6.874768,
+   "lng": 107.62412,
+   "address": "Jalan Cigadung Asri I 3",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/4863109262",
+   "name": "F 114",
+   "kind": "Balai warga / gedung serbaguna",
+   "lat": -6.897978,
+   "lng": 107.645911,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "way/633530069",
+   "name": "Gedung Padepokan Panglipur",
+   "kind": "Balai warga / gedung serbaguna",
+   "lat": -6.943337,
+   "lng": 107.639007,
+   "address": "Jl. H. Basuki III, Binong, Kec. Batununggal, Kota Bandung, Jawa Barat 40275",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "way/895880084",
+   "name": "Gedung Padepokan Panglipur",
+   "kind": "Balai warga / gedung serbaguna",
+   "lat": -6.943206,
+   "lng": 107.639032,
+   "address": "Jl. H. Basuki III, Binong, Kec. Batununggal, Kota Bandung, Jawa Barat 40275",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "way/546598277",
+   "name": "Nutrihub",
+   "kind": "Balai warga / gedung serbaguna",
+   "lat": -6.887902,
+   "lng": 107.615006,
+   "address": "Jalan Raden Patah 36",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "way/152933148",
+   "name": "Pusat Kegiatan Mahasiswa (PKM) UPI",
+   "kind": "Balai warga / gedung serbaguna",
+   "lat": -6.862391,
+   "lng": 107.593734,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "way/1358497144",
+   "name": "Sawarna MC",
+   "kind": "Balai warga / gedung serbaguna",
+   "lat": -6.919328,
+   "lng": 107.607527,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/13033667409",
+   "name": "Sudirman Grand Ballroom",
+   "kind": "Balai warga / gedung serbaguna",
+   "lat": -6.916833,
+   "lng": 107.579692,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/4010750717",
+   "name": "Yayasan Pengembangan Biosains dan Bioteknologi Urban Center",
+   "kind": "Balai warga / gedung serbaguna",
+   "lat": -6.898004,
+   "lng": 107.621518,
+   "address": "Jalan Jalak 20",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/4538382491",
+   "name": "komplek kurdi",
+   "kind": "Balai warga / gedung serbaguna",
+   "lat": -6.943199,
+   "lng": 107.604703,
+   "address": "jalan karasak- m tohha",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "relation/20104779",
+   "name": "Balai Kota Bandung",
+   "kind": "Kantor pemerintahan",
+   "lat": -6.910963,
+   "lng": 107.609813,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "way/119762182",
+   "name": "Dewan Perwakilan Rakyat Daerah Jawa Barat",
+   "kind": "Kantor pemerintahan",
+   "lat": -6.901822,
+   "lng": 107.6181,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "way/633539605",
+   "name": "Gedung Serbaguna Babakan Jati",
+   "kind": "Kantor pemerintahan",
+   "lat": -6.942172,
+   "lng": 107.637604,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "way/180025734",
+   "name": "Kecamatan Sukasari",
+   "kind": "Kantor pemerintahan",
+   "lat": -6.868967,
+   "lng": 107.582571,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "way/204549915",
+   "name": "Kelurahan Sukasari",
+   "kind": "Kantor pemerintahan",
+   "lat": -6.868292,
+   "lng": 107.582614,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "way/336848398",
+   "name": "Pendopo Kota Bandung",
+   "kind": "Kantor pemerintahan",
+   "lat": -6.923869,
+   "lng": 107.607042,
+   "address": "Jalan Dalem Kaum 56",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "way/1144810023",
+   "name": "Cibiru",
+   "kind": "Shelter / bangunan penampung",
+   "lat": -6.935381,
+   "lng": 107.717591,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "way/1396022741",
+   "name": "Hall Kereta Cepat Stasiun Bandung",
+   "kind": "Shelter / bangunan penampung",
+   "lat": -6.913641,
+   "lng": 107.601806,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/14188625114",
+   "name": "Pangkalan Becak Elbaz Margahayu",
+   "kind": "Shelter / bangunan penampung",
+   "lat": -6.942774,
+   "lng": 107.663509,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/14188625112",
+   "name": "Pangkalan Becak Pasar Ciwastra",
+   "kind": "Shelter / bangunan penampung",
+   "lat": -6.961218,
+   "lng": 107.666503,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/14188625111",
+   "name": "Pangkalan Becak Pasar Gedebage",
+   "kind": "Shelter / bangunan penampung",
+   "lat": -6.935603,
+   "lng": 107.69714,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/14188625115",
+   "name": "Pangkalan Becak Pujasera Margahayu",
+   "kind": "Shelter / bangunan penampung",
+   "lat": -6.939492,
+   "lng": 107.667169,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/14188625113",
+   "name": "Pangkalan Becak Terminal Margahayu Raya",
+   "kind": "Shelter / bangunan penampung",
+   "lat": -6.946622,
+   "lng": 107.662665,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "way/186989907",
+   "name": "GOR Citra",
+   "kind": "Stadion / lapangan besar",
+   "lat": -6.893351,
+   "lng": 107.640181,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "way/32388787",
+   "name": "GOR Padjajaran",
+   "kind": "Stadion / lapangan besar",
+   "lat": -6.908176,
+   "lng": 107.60099,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/1966161303",
+   "name": "Lapang Olah Raga SMK PGRI 4",
+   "kind": "Stadion / lapangan besar",
+   "lat": -6.959325,
+   "lng": 107.65174,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/12625165930",
+   "name": "Stadion Arcamanik",
+   "kind": "Stadion / lapangan besar",
+   "lat": -6.910797,
+   "lng": 107.673569,
+   "address": "Jl. Pacuan Kuda",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "way/752095932",
+   "name": "Stadion Arcamanik",
+   "kind": "Stadion / lapangan besar",
+   "lat": -6.910831,
+   "lng": 107.67359,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "way/1222527786",
+   "name": "Stadion Bola Voli Pasir",
+   "kind": "Stadion / lapangan besar",
+   "lat": -6.911146,
+   "lng": 107.674757,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "way/244493457",
+   "name": "Stadion Gelora Bandung Lautan Api",
+   "kind": "Stadion / lapangan besar",
+   "lat": -6.957583,
+   "lng": 107.712048,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "way/185227124",
+   "name": "Stadion Persib",
+   "kind": "Stadion / lapangan besar",
+   "lat": -6.917151,
+   "lng": 107.629654,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/12408520104",
+   "name": "Stadion Siliwangi",
+   "kind": "Stadion / lapangan besar",
+   "lat": -6.910328,
+   "lng": 107.619556,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "way/119554061",
+   "name": "Stadion Siliwangi",
+   "kind": "Stadion / lapangan besar",
+   "lat": -6.910401,
+   "lng": 107.619556,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "way/27596326",
+   "name": "Stadion Softball dan Baseball",
+   "kind": "Stadion / lapangan besar",
+   "lat": -6.911734,
+   "lng": 107.676944,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/13062656029",
+   "name": "Titik kumpul (node/13062656029)",
+   "kind": "Titik kumpul",
+   "lat": -6.88729,
+   "lng": 107.613438,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/13062668246",
+   "name": "Titik kumpul (node/13062668246)",
+   "kind": "Titik kumpul",
+   "lat": -6.885128,
+   "lng": 107.613567,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/13070083922",
+   "name": "Titik kumpul (node/13070083922)",
+   "kind": "Titik kumpul",
+   "lat": -6.883573,
+   "lng": 107.614716,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/13072180149",
+   "name": "Titik kumpul (node/13072180149)",
+   "kind": "Titik kumpul",
+   "lat": -6.89138,
+   "lng": 107.608194,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/13079919731",
+   "name": "Titik kumpul (node/13079919731)",
+   "kind": "Titik kumpul",
+   "lat": -6.892494,
+   "lng": 107.609279,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/13103261141",
+   "name": "Titik kumpul (node/13103261141)",
+   "kind": "Titik kumpul",
+   "lat": -6.887797,
+   "lng": 107.611318,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/13105153997",
+   "name": "Titik kumpul (node/13105153997)",
+   "kind": "Titik kumpul",
+   "lat": -6.890365,
+   "lng": 107.611605,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/13125786939",
+   "name": "Titik kumpul (node/13125786939)",
+   "kind": "Titik kumpul",
+   "lat": -6.878468,
+   "lng": 107.597991,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/13242756425",
+   "name": "Titik kumpul (node/13242756425)",
+   "kind": "Titik kumpul",
+   "lat": -6.922427,
+   "lng": 107.618645,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/13242866111",
+   "name": "Titik kumpul (node/13242866111)",
+   "kind": "Titik kumpul",
+   "lat": -6.946744,
+   "lng": 107.641625,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/13253364668",
+   "name": "Titik kumpul (node/13253364668)",
+   "kind": "Titik kumpul",
+   "lat": -6.914017,
+   "lng": 107.609605,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/13460516875",
+   "name": "Titik kumpul (node/13460516875)",
+   "kind": "Titik kumpul",
+   "lat": -6.929021,
+   "lng": 107.585641,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/13480893948",
+   "name": "Titik kumpul (node/13480893948)",
+   "kind": "Titik kumpul",
+   "lat": -6.883297,
+   "lng": 107.614235,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/13480971316",
+   "name": "Titik kumpul (node/13480971316)",
+   "kind": "Titik kumpul",
+   "lat": -6.918617,
+   "lng": 107.585068,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/13481427005",
+   "name": "Titik kumpul (node/13481427005)",
+   "kind": "Titik kumpul",
+   "lat": -6.913226,
+   "lng": 107.575343,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/13611583855",
+   "name": "Titik kumpul (node/13611583855)",
+   "kind": "Titik kumpul",
+   "lat": -6.889997,
+   "lng": 107.613222,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/13647740559",
+   "name": "Titik kumpul (node/13647740559)",
+   "kind": "Titik kumpul",
+   "lat": -6.895289,
+   "lng": 107.61266,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/13650984079",
+   "name": "Titik kumpul (node/13650984079)",
+   "kind": "Titik kumpul",
+   "lat": -6.941406,
+   "lng": 107.690873,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/13713788088",
+   "name": "Titik kumpul (node/13713788088)",
+   "kind": "Titik kumpul",
+   "lat": -6.896054,
+   "lng": 107.599197,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/13742267899",
+   "name": "Titik kumpul (node/13742267899)",
+   "kind": "Titik kumpul",
+   "lat": -6.913339,
+   "lng": 107.645372,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/13742348443",
+   "name": "Titik kumpul (node/13742348443)",
+   "kind": "Titik kumpul",
+   "lat": -6.912797,
+   "lng": 107.651831,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  },
+  {
+   "osm_ref": "node/13795370789",
+   "name": "Titik kumpul (node/13795370789)",
+   "kind": "Titik kumpul",
+   "lat": -6.906527,
+   "lng": 107.615458,
+   "address": "Alamat belum tercatat di OpenStreetMap",
+   "capacity": null,
+   "contact": null
+  }
+ ]
+}

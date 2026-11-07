@@ -9,7 +9,8 @@ from app.schemas import AlertOut, AuditLogOut, IncidentDetail, IncidentOut, Leve
 from app.services import engine, notifier
 
 router = APIRouter(prefix="/incidents", tags=["kejadian"])
-coordinator = require_role(Role.KOORDINATOR, Role.ADMIN)
+reader = require_role(Role.POS_PANTAU, Role.KOORDINATOR, Role.ADMIN)
+coordinator = require_role(Role.KOORDINATOR, Role.POS_PANTAU, Role.ADMIN)
 
 
 def _get(db: Session, me: User, incident_id: int) -> Incident:
@@ -25,7 +26,7 @@ def list_incidents(
     status_: IncidentStatus | None = Query(IncidentStatus.AKTIF, alias="status"),
     hazard: Hazard | None = None,
     db: Session = Depends(get_db),
-    me: User = Depends(coordinator),
+    me: User = Depends(reader),
 ):
     q = select(Incident).order_by(Incident.last_report_at.desc())
     scope = user_scope_ids(db, me)
@@ -39,14 +40,14 @@ def list_incidents(
 
 
 @router.get("/{incident_id}", response_model=IncidentDetail)
-def get_incident(incident_id: int, db: Session = Depends(get_db), me: User = Depends(coordinator)):
+def get_incident(incident_id: int, db: Session = Depends(get_db), me: User = Depends(reader)):
     incident = _get(db, me, incident_id)
     reports = db.scalars(select(Report).where(Report.incident_id == incident.id).order_by(Report.id)).all()
     return {**IncidentOut.model_validate(incident).model_dump(), "reports": reports}
 
 
 @router.get("/{incident_id}/history", response_model=list[AuditLogOut])
-def incident_history(incident_id: int, db: Session = Depends(get_db), me: User = Depends(coordinator)):
+def incident_history(incident_id: int, db: Session = Depends(get_db), me: User = Depends(reader)):
     _get(db, me, incident_id)
     return db.scalars(select(AuditLog).where(
         AuditLog.entity_type == "incident", AuditLog.entity_id == str(incident_id)).order_by(AuditLog.id)).all()

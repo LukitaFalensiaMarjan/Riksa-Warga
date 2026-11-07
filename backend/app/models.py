@@ -16,9 +16,9 @@ class Role(StrEnum):
     WARGA = "warga"
     KOORDINATOR = "koordinator"
     POS_PANTAU = "pos_pantau"
-    RELAWAN = "relawan"
-    PETUGAS = "petugas"
+    TIM_SAR = "tim_sar"
     ADMIN = "admin"
+    RELAWAN = "relawan"  # kompatibilitas untuk tim sar / relawan evakuasi
 
 
 class RegionLevel(StrEnum):
@@ -52,6 +52,7 @@ class User(Base):
     region_id: Mapped[int] = mapped_column(ForeignKey("regions.id"), index=True)
     phone: Mapped[str | None] = mapped_column(String(32))
     telegram_chat_id: Mapped[str | None] = mapped_column(String(64))
+    sms_opt_in: Mapped[bool] = mapped_column(Boolean, default=False)  # persetujuan menerima SMS (PRD §7.3)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
@@ -76,7 +77,8 @@ class AuditLog(Base):
 
 class Hazard(StrEnum):
     BANJIR = "banjir"
-    KEBAKARAN = "kebakaran"
+    KEBAKARAN = "kebakaran"  # ditunda (PRD v2 D-12): ditolak saat lapor, enum dipertahankan untuk aturan lama
+    LAINNYA = "lainnya"  # hanya informasi untuk pos pantau, tanpa mesin aturan
 
 
 class FireIndicator(StrEnum):
@@ -140,6 +142,13 @@ class AlertKind(StrEnum):
     KOREKSI = "koreksi"
     PEMBATALAN = "pembatalan"
     SELESAI = "selesai"
+    PENGUMUMAN = "pengumuman"  # siaran resmi pos pantau
+    SUNGAI = "sungai"  # kondisi sungai berubah (tombol pos pantau)
+    PREDIKSI = "prediksi"  # prakiraan risiko naik
+    SHELTER = "shelter"  # shelter penuh / ditutup
+    TUGAS = "tugas"  # permintaan bantuan / tugas baru untuk Tim SAR
+    BANTUAN = "bantuan"  # warga butuh / diduga butuh bantuan
+    MODE_BENCANA = "mode_bencana"  # mode bencana aktif, warga diminta konfirmasi
 
 
 class DeliveryStatus(StrEnum):
@@ -153,9 +162,10 @@ class SafetyStatus(StrEnum):
     AMAN_MANDIRI = "aman_mandiri"
     AMAN_TERVERIFIKASI = "aman_terverifikasi"
     BUTUH_BANTUAN = "butuh_bantuan"
+    DIDUGA_BUTUH_BANTUAN = "diduga_butuh_bantuan"  # tak menjawab di area berbahaya (PRD §9.3)
     DALAM_PENANGANAN = "dalam_penanganan"
     DALAM_PERJALANAN = "dalam_perjalanan"
-    TIBA_DI_TITIK_AMAN = "tiba_di_titik_aman"
+    TIBA_DI_TITIK_AMAN = "tiba_di_titik_aman"  # label UI: Sudah Evakuasi
     TIDAK_DAPAT_DIHUBUNGI = "tidak_dapat_dihubungi"
 
 
@@ -165,6 +175,7 @@ class StatusSource(StrEnum):
     BUDDY = "buddy"
     KELUARGA = "keluarga"
     PETUGAS = "petugas"
+    SISTEM = "sistem"
 
 
 class NeedType(StrEnum):
@@ -176,6 +187,7 @@ class NeedType(StrEnum):
 
 class Vulnerability(StrEnum):
     LANSIA = "lansia"
+    BALITA = "balita"
     DISABILITAS = "disabilitas"
     ANAK = "anak"
     SAKIT = "sakit"
@@ -205,6 +217,10 @@ class Station(Base):
     river_name: Mapped[str | None] = mapped_column(String(120))
     warning_cm: Mapped[float] = mapped_column(Double)
     danger_cm: Mapped[float] = mapped_column(Double)
+    # kondisi sungai yang ditetapkan manusia (tombol pos pantau): normal | waspada | meluap
+    condition: Mapped[str] = mapped_column(String(16), default="normal")
+    condition_at: Mapped[datetime | None] = mapped_column(DateTime)
+    condition_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
@@ -255,6 +271,9 @@ class Report(Base):
     incident_id: Mapped[int | None] = mapped_column(ForeignKey("incidents.id"), index=True)
     reporter_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     region_id: Mapped[int] = mapped_column(ForeignKey("regions.id"), index=True)
+    title: Mapped[str | None] = mapped_column(String(200))
+    location_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    conditions: Mapped[list] = mapped_column(JSON, default=list)
     hazard: Mapped[Hazard] = mapped_column(_enum(Hazard))
     fire_indicator: Mapped[FireIndicator | None] = mapped_column(_enum(FireIndicator))
     source: Mapped[ReportSource] = mapped_column(_enum(ReportSource))
@@ -300,6 +319,11 @@ class Alert(Base):
     reason: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    # None = semua role non-admin di wilayah sasaran; admin TIDAK PERNAH menerima (PRD §5.3)
+    target_roles: Mapped[list | None] = mapped_column(JSON)
+    sms: Mapped[bool] = mapped_column(Boolean, default=False)  # kirim juga lewat SMS (peristiwa berat saja)
+    dedupe_key: Mapped[str | None] = mapped_column(String(100), index=True)
+    parent_alert_id: Mapped[int | None] = mapped_column(ForeignKey("alerts.id"))  # koreksi/pembatalan
 
 
 class AlertDelivery(Base):
@@ -308,7 +332,7 @@ class AlertDelivery(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     alert_id: Mapped[int] = mapped_column(ForeignKey("alerts.id"), index=True)
     channel: Mapped[str] = mapped_column(String(32))
-    recipient: Mapped[str] = mapped_column(String(64))
+    recipient: Mapped[str] = mapped_column(String(80))  # chat ID, atau nomor SMS yang disamarkan
     status: Mapped[DeliveryStatus] = mapped_column(_enum(DeliveryStatus))
     error: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -331,13 +355,38 @@ class Resident(Base):
     buddy_name: Mapped[str | None] = mapped_column(String(120))
     buddy_phone: Mapped[str | None] = mapped_column(String(32))
     consent: Mapped[bool] = mapped_column(Boolean, default=False)
-    # lokasi sensitif: hanya koordinator wilayahnya & relawan yang ditugaskan
+    # izin lokasi SEKALI (PRD §8); dapat dicabut. Lokasi dipakai/dilihat pihak lain hanya saat Mode Bencana.
+    location_consent_at: Mapped[datetime | None] = mapped_column(DateTime)
+    location_consent_version: Mapped[str | None] = mapped_column(String(16))
+    location_revoked_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # lokasi sensitif: hanya koordinator wilayahnya & Tim SAR (warga butuh bantuan) saat Mode Bencana
     home_lat: Mapped[float | None] = mapped_column(Double)
     home_lng: Mapped[float | None] = mapped_column(Double)
     last_lat: Mapped[float | None] = mapped_column(Double)  # dibagikan warga secara sadar
     last_lng: Mapped[float | None] = mapped_column(Double)
     last_location_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    @property
+    def location_consented(self) -> bool:
+        return self.location_consent_at is not None and self.location_revoked_at is None
+
+
+class FamilyMember(Base):
+    """Anggota keluarga/rumah tangga warga (PRD FR-060). Dicatat koordinator dengan persetujuan."""
+
+    __tablename__ = "family_members"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    resident_id: Mapped[int] = mapped_column(ForeignKey("residents.id"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    relation: Mapped[str | None] = mapped_column(String(40))
+    age: Mapped[int | None] = mapped_column(Integer)
+    vulnerability: Mapped[list] = mapped_column(JSON, default=list)
+    phone: Mapped[str | None] = mapped_column(String(32))
+    note: Mapped[str | None] = mapped_column(Text)  # catatan evakuasi (sensitif)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
@@ -355,7 +404,7 @@ class ResidentStatusLog(Base):
     note: Mapped[str | None] = mapped_column(Text)
     lat: Mapped[float | None] = mapped_column(Double)
     lng: Mapped[float | None] = mapped_column(Double)
-    updated_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))  # None = sistem (aturan otomatis)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
@@ -378,6 +427,10 @@ class Shelter(Base):
     verified_at: Mapped[datetime | None] = mapped_column(DateTime)
     verified_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    # asal data (PRD §12.1): tidak ada shelter tanpa sumber yang dapat ditelusuri
+    kind: Mapped[str | None] = mapped_column(String(40))
+    source: Mapped[str | None] = mapped_column(String(255))
+    osm_ref: Mapped[str | None] = mapped_column(String(32), unique=True)
 
 
 class WeatherContext(Base):
@@ -469,6 +522,22 @@ class ShelterCheckin(Base):
     people_count: Mapped[int] = mapped_column(Integer, default=1)
     task_id: Mapped[int | None] = mapped_column(ForeignKey("rescue_tasks.id"))
     checked_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class RescueReport(Base):
+    """Laporan pasca-bantuan Tim SAR (PRD FR-065), satu per tugas."""
+
+    __tablename__ = "rescue_reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("rescue_tasks.id"), unique=True)
+    people_helped: Mapped[int] = mapped_column(Integer)
+    condition: Mapped[str] = mapped_column(String(24))  # selamat | luka | butuh_rujukan
+    destination: Mapped[str | None] = mapped_column(String(160))  # shelter / RS
+    obstacles: Mapped[str | None] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(Text)
+    reported_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

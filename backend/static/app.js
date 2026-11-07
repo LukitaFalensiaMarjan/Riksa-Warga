@@ -10,7 +10,7 @@ const PRESETS = [
   ["Hilir 1", -6.9002, 107.6151, "RT 01 / RW 02"],
   ["Hilir 2", -6.9008, 107.6155, "RT 01 / RW 02"],
   ["Hilir 3", -6.8998, 107.6146, "RT 01 / RW 02"],
-  ["Kebakaran RW 01", -6.8850, 107.6120, "RT 02 / RW 01"],
+  ["Luapan Citepus Pagarsih (75cm)", -6.9240, 107.5950, "RT 02 / RW 01"],
 ];
 const LABEL = {
   aman_mandiri: "Saya Aman (laporan mandiri)", aman_terverifikasi: "Aman Terverifikasi",
@@ -24,6 +24,9 @@ const LABEL = {
   baru: "Belum ditugaskan", selesai: "Selesai", gagal: "Gagal", dibatalkan: "Dibatalkan",
   jalan_tertutup: "Jalan tertutup", genangan: "Genangan / banjir", api: "Api", pohon_tumbang: "Pohon tumbang",
   kabel_listrik: "Kabel listrik", dilaporkan_dapat_dilalui: "Dilaporkan dapat dilalui",
+  air_naik: "Air Naik", sampah_menumpuk: "Sampah Menumpuk", arus_deras: "Arus Deras",
+  tanggul_rusak: "Tanggul Rusak", genangan_jalan: "Genangan Jalan", masuk_rumah: "Masuk Rumah",
+  lumpur_pekat: "Endapan Lumpur",
 };
 const lab = v => LABEL[v] || String(v ?? "").replaceAll("_", " ");
 const LEVEL_RANK = { pantau: 1, waspada: 2, siaga: 3, evakuasi: 4 };
@@ -249,10 +252,14 @@ function newMap(el, center, zoom = 15) {
   setTimeout(() => map.invalidateSize(), 80);
   return map;
 }
-const pinIcon = (color, glyph, pulse = false) => L.divIcon({
-  className: "", html: `<div class="pin${pulse ? " pulse" : ""}" style="background:${color}"><span>${glyph}</span></div>`,
-  iconSize: [30, 30], iconAnchor: [15, 30], tooltipAnchor: [0, -26],
-});
+const pinIcon = (color, glyph, pulse = false) => {
+  const isYellow = color === "#eab308" || color === "#facc15" || color === "#f59e0b";
+  const txtColor = isYellow ? "#78350f" : "#fff";
+  return L.divIcon({
+    className: "", html: `<div class="pin${pulse ? " pulse" : ""}" style="background:${color}"><span style="color:${txtColor}">${glyph}</span></div>`,
+    iconSize: [30, 30], iconAnchor: [15, 30], tooltipAnchor: [0, -26],
+  });
+};
 const dotIcon = color => L.divIcon({ className: "", html: `<div class="dotpin" style="background:${color}"></div>`, iconSize: [16, 16], iconAnchor: [8, 8] });
 const meIcon = () => L.divIcon({ className: "", html: '<div class="me-dot"></div>', iconSize: [18, 18], iconAnchor: [9, 9] });
 function addShelters(map, shelters) {
@@ -310,60 +317,116 @@ function logout() {
 const stopTimer = () => { if (timer) clearInterval(timer); timer = null; };
 
 function renderLogin() {
-  const user = h("input", { autocomplete: "username", required: true });
-  const pass = h("input", { type: "password", autocomplete: "current-password", required: true });
+  const user = h("input", { autocomplete: "username", required: true, placeholder: "Username" });
+  const pass = h("input", { type: "password", autocomplete: "current-password", required: true, placeholder: "Password (demo123)" });
   const go = act(async () => {
     const r = await api("POST", "/auth/login", { username: user.value.trim(), password: pass.value }, { login: true });
     token = r.access_token; store.set("rw_token", token);
     await boot();
   });
-  const demo = ["admin", "koord_rw01", "koord_rw02", "pospantau1", "relawan1", "relawan2", "warga1", "warga2", "warga3"];
+
+  const demoAccounts = [
+    { role: "Tim SAR", username: "timsar1", title: "Tim SAR Satu", icon: "🚑", color: "#dc2626" },
+    { role: "Koordinator Daerah", username: "koord_rw01", title: "Koordinator Wilayah RW 01", icon: "📋", color: "#0b3a6e" },
+    { role: "Pos Pantau", username: "pospantau1", title: "Petugas Pos Pantau Cikapundung", icon: "🌊", color: "#0e7c86" },
+    { role: "Warga", username: "warga1", title: "Warga Satu (RT 01 / RW 01)", icon: "👤", color: "#0f9d6b" },
+    { role: "Admin", username: "admin", title: "Admin Kelurahan / Sistem", icon: "🛡️", color: "#475569" },
+  ];
+
+  const quickFill = (u) => {
+    user.value = u;
+    pass.value = "demo123";
+    pass.focus();
+  };
+
   app.replaceChildren(h("div", { class: "login-wrap" },
     h("div", { class: "login-art" },
       h("img", { src: "/icons/logo-192.png", alt: "Logo Riksa Warga" }),
       h("h1", {}, "Riksa Warga"),
-      h("p", {}, "Saling jaga, saling kabari. Koordinasi kesiapsiagaan dan evakuasi tingkat RT/RW untuk banjir dan kebakaran."),
-      h("div", { class: "pills" }, h("span", {}, "Monitor"), h("span", {}, "Alert"), h("span", {}, "Rescue"))),
-    h("div", { class: "login-form" }, h("div", { class: "card" },
-      h("h2", {}, "Masuk"),
-      h("form", { onsubmit: ev => { ev.preventDefault(); go(); } },
-        field("Username", user), field("Password", pass), h("button", { style: "width:100%" }, "Masuk")),
-      h("p", { class: "muted small-text", style: "margin-bottom:0" }, "Akun demo (klik untuk mengisi username):"),
-      h("div", { class: "accts" }, demo.map(u => h("button", { type: "button", class: "sec small", onclick: () => { user.value = u; pass.focus(); } }, u)))))));
+      h("p", {}, "Saling jaga, saling kabari. Sistem kesiapsiagaan banjir & evakuasi Kota Bandung."),
+      h("div", { class: "pills" }, h("span", {}, "Live Monitor"), h("span", {}, "Alert Broadcast"), h("span", {}, "SAR Rescue"))),
+    h("div", { class: "login-form" }, h("div", { class: "card", style: "box-shadow:0 8px 30px rgba(0,0,0,.15);border-radius:14px;padding:26px" },
+      h("h2", { style: "margin:0 0 6px;color:var(--navy)" }, "Masuk ke Riksa Warga"),
+      h("p", { class: "muted small-text", style: "margin:0 0 16px" }, "Pilih salah satu peran demo di bawah untuk login cepat:"),
+
+      // Demo role selection cards
+      h("div", { style: "display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:18px" },
+        demoAccounts.map(acc => h("div", {
+          style: "display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;cursor:pointer;transition:all .15s",
+          onclick: () => quickFill(acc.username),
+          onmouseenter: (e) => { e.currentTarget.style.borderColor = acc.color; e.currentTarget.style.background = "#f0f7ff"; },
+          onmouseleave: (e) => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "#f8fafc"; },
+        },
+          h("div", { style: "display:flex;align-items:center;gap:10px" },
+            h("span", { style: "font-size:22px" }, acc.icon),
+            h("div", {},
+              h("div", { style: `font-weight:800;font-size:14px;color:${acc.color}` }, acc.role),
+              h("div", { class: "muted small-text" }, `${acc.username} · ${acc.title}`)
+            )
+          ),
+          h("button", {
+            type: "button",
+            class: "small sec",
+            style: "padding:4px 12px;font-size:12px;font-weight:700",
+            onclick: (ev) => {
+              ev.stopPropagation();
+              quickFill(acc.username);
+              go();
+            }
+          }, "Pilih & Masuk →")
+        ))
+      ),
+
+      h("div", { style: "border-top:1px solid var(--line);padding-top:14px" },
+        h("form", { onsubmit: ev => { ev.preventDefault(); go(); } },
+          field("Username", user),
+          field("Password", pass),
+          h("button", { style: "width:100%;margin-top:8px" }, "Masuk")
+        ),
+        h("p", { class: "muted small-text", style: "text-align:center;margin-top:10px;margin-bottom:0" },
+          "Password semua akun demo: ", h("b", {}, "demo123")
+        )
+      )
+    ))
+  ));
 }
 
 const TABS = {
   beranda: { label: "Beranda", icon: "beranda", render: viewHome },
   dashboard: { label: "Dashboard", icon: "dashboard", render: viewDashboard, refresh: 15000 },
   prioritas: { label: "Prioritas Evakuasi", icon: "target", render: viewPriorities },
-  tugas: { label: "Tugas Relawan", icon: "tugas", render: viewTasks },
-  tugasku: { label: "Tugas Saya", icon: "tugas", render: viewMyTasks, refresh: 20000 },
+  tugas: { label: "Tugas Tim SAR", icon: "tugas", render: viewTasks },
+  tugasku: { label: "Tugas Tim SAR", icon: "tugas", render: viewMyTasks, refresh: 20000 },
   incidents: { label: "Kejadian", icon: "kejadian", render: viewIncidents },
   reports: { label: "Laporan Masuk", icon: "inbox", render: viewReports },
-  residents: { label: "Data Warga", icon: "warga", render: viewResidents },
+  residents: { label: "Data Warga & KK", icon: "warga", render: viewResidents },
   petarute: { label: "Peta & Rute", icon: "rute", render: viewRouteAdmin },
+  live: { label: "Live Monitoring", icon: "pos", render: viewLiveMonitoring, refresh: 3000 },
   peta: { label: "Peta Evakuasi", icon: "peta", render: viewMapNav },
   shelters: { label: "Shelter", icon: "shelter", render: viewShelters },
-  pos: { label: "Pos Pantau", icon: "pos", render: viewStations },
+  pos: { label: "Live Monitoring", icon: "pos", render: viewLiveMonitoring, refresh: 3000 },
   weather: { label: "Cuaca & Aturan", icon: "cuaca", render: viewWeather },
   alerts: { label: "Peringatan", icon: "alert", render: viewAlerts },
   lapor: { label: "Lapor Kejadian", icon: "lapor", render: viewReport },
   mine: { label: "Laporan Saya", icon: "list", render: viewMine },
-  admin: { label: "Admin", icon: "admin", render: viewAdmin },
+  admin: { label: "Kelola User", icon: "admin", render: viewAdmin },
 };
 function tabsFor(role) {
-  const coord = ["dashboard", "prioritas", "tugas", "incidents", "reports", "residents", "petarute", "shelters", "pos", "weather", "alerts", "lapor"];
-  if (role === "admin") return [...coord, "admin"];
+  const coord = ["dashboard", "live", "prioritas", "tugas", "incidents", "reports", "residents", "petarute", "shelters", "weather", "alerts", "lapor"];
+  if (role === "admin") return ["admin"];
   if (role === "koordinator") return coord;
-  if (role === "relawan" || role === "petugas") return ["tugasku", "beranda", "peta", "lapor", "alerts", "shelters"];
-  if (role === "pos_pantau") return ["pos", "lapor", "peta", "mine", "alerts"];
-  return ["beranda", "lapor", "peta", "mine", "alerts", "shelters"];
+  if (role === "tim_sar" || role === "relawan" || role === "petugas") return ["peta", "tugasku", "live", "shelters", "alerts", "lapor"];
+  if (role === "pos_pantau") return ["live", "reports", "peta", "alerts", "shelters"];
+  return ["beranda", "live", "peta", "mine", "alerts", "shelters", "lapor"];
 }
-const ROLE_LABEL = { warga: "Warga", koordinator: "Koordinator RT/RW", pos_pantau: "Petugas Pos Pantau", relawan: "Relawan", petugas: "Petugas", admin: "Admin" };
+const ROLE_LABEL = { warga: "Warga", koordinator: "Koordinator Daerah", pos_pantau: "Pos Pantau", tim_sar: "Tim SAR", relawan: "Tim SAR", petugas: "Tim SAR", admin: "Admin" };
 
 function renderShell() {
   const tabs = tabsFor(me.role);
-  const link = id => h("a", { href: "#" + id, "data-id": id }, icon(TABS[id].icon), h("span", {}, TABS[id].label));
+  const link = id => {
+    const lbl = (id === "reports" && me.role === "pos_pantau") ? "Laporan & Verifikasi" : TABS[id].label;
+    return h("a", { href: "#" + id, "data-id": id }, icon(TABS[id].icon), h("span", {}, lbl));
+  };
   const prof = h("div", { class: "no-print" });
   const openProfile = () => { if (prof.childNodes.length) prof.replaceChildren(); else profile(prof); };
   netbar = h("div", { class: "netbar", hidden: true });
@@ -381,6 +444,7 @@ function renderShell() {
       netbar, prof, main)));
   setNet(navigator.onLine);
   const route = () => {
+    if (location.hash === "#pos") location.hash = "#live";
     const id = tabs.includes(location.hash.slice(1)) ? location.hash.slice(1) : tabs[0];
     document.querySelectorAll("nav a").forEach(a => a.classList.toggle("on", a.dataset.id === id));
     show(id);
@@ -445,17 +509,50 @@ function activeAlerts(alerts) {
 const actionLine = msg => (msg.split("\n").find(l => l.startsWith("Tindakan:")) || "").replace("Tindakan: ", "");
 
 async function viewHome(box) {
-  const [alerts, res, shelters] = await Promise.all([api("GET", "/alerts?limit=50"), api("GET", "/me/resident"), api("GET", "/shelters")]);
+  const [alerts, res, shelters, mode] = await Promise.all([
+    api("GET", "/alerts?limit=50"),
+    api("GET", "/me/resident"),
+    api("GET", "/shelters"),
+    api("GET", "/me/mode").catch(() => ({ active: false }))
+  ]);
   const act0 = activeAlerts(alerts)[0];
   const sim = act0?.message.startsWith("[SIMULASI]");
-  box.append(act0
-    ? h("div", { class: "hero l-" + act0.level },
+
+  // Tampilkan HANYA SATU banner hero utama (prioritas: Mode Bencana > Peringatan Aktif > Wilayah Aman)
+  if (mode && mode.active) {
+    const mins = Math.ceil(mode.seconds_left / 60);
+    box.append(h("div", { class: "hero l-evakuasi" },
+      h("small", {}, "MODE BENCANA AKTIF DI AREA ANDA"),
+      h("h1", {}, mode.answered ? "Terima kasih, kabar Anda sudah tercatat" : "Segera kabari keselamatan Anda"),
+      h("p", {}, mode.answered ? "Tetap waspada dan ikuti arahan petugas serta pantau rute evakuasi."
+        : mins > 0 ? `Tekan SAYA AMAN atau BUTUH BANTUAN dalam ±${mins} menit. Bila tidak menjawab dan lokasi Anda di area berbahaya, Anda ditandai DIDUGA BUTUH BANTUAN dan dilacak Tim SAR.`
+          : "Batas waktu menjawab terlewati. Segera tekan SAYA AMAN atau BUTUH BANTUAN."),
+      h("p", { style: "margin-top:8px" }, h("a", { href: "#alerts", style: "color:#fff;font-weight:700" }, "Lihat peringatan resmi →"))
+    ));
+  } else if (act0) {
+    box.append(h("div", { class: "hero l-" + act0.level },
       h("small", {}, `${sim ? "SIMULASI · " : ""}Peringatan ${act0.verification === "terverifikasi" ? "terverifikasi" : "BELUM diverifikasi"} · ${fmt(act0.created_at)}`),
       h("h1", {}, `${act0.level.toUpperCase()} — kejadian #${act0.incident_id}`),
       h("p", {}, actionLine(act0.message) || "Ikuti arahan koordinator dan petugas berwenang."),
-      h("p", { style: "margin-top:8px" }, h("a", { href: "#alerts", style: "color:#fff;font-weight:700" }, "Baca pesan lengkap →")))
-    : h("div", { class: "hero" }, h("small", {}, "Kondisi wilayah"), h("h1", {}, "Tidak ada peringatan aktif"),
-      h("p", {}, "Tetap saling jaga. Laporkan bila melihat air naik, asap, atau api.")));
+      h("p", { style: "margin-top:8px" }, h("a", { href: "#alerts", style: "color:#fff;font-weight:700" }, "Baca pesan lengkap →"))
+    ));
+  } else {
+    box.append(h("div", { class: "hero" },
+      h("small", {}, "Kondisi wilayah"),
+      h("h1", {}, "Tidak ada peringatan aktif"),
+      h("p", {}, "Tetap saling jaga. Laporkan bila melihat air sungai naik atau luapan banjir.")
+    ));
+  }
+
+  box.append(
+    h("div", { class: "card", style: "display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:linear-gradient(90deg,#eef7ff,#f2fcf8);border-color:#b9e2fe;margin-bottom:14px;cursor:pointer", onclick: () => { location.hash = "#live"; } },
+      h("div", { style: "display:flex;align-items:center;gap:10px" },
+        h("span", { class: "pulse-badge", style: "background:#e0f2fe;color:#0369a1;border-color:#7dd3fc" }, "🌊 LIVE SUNGAI & CUACA"),
+        h("span", { style: "font-size:13.5px;font-weight:700;color:var(--navy)" }, "Pantau ketinggian air sungai & cuaca Bandung →")
+      ),
+      h("button", { class: "small sec", style: "padding:4px 10px;font-size:12px" }, "Buka Live")
+    )
+  );
 
   const statusExplain = {
     belum_terkonfirmasi: "Belum ada kabar dari Anda untuk kejadian ini.",
@@ -490,7 +587,7 @@ async function viewHome(box) {
   box.append(h("div", { class: "bigbtns" },
     h("button", { class: "big safe", onclick: act(() => sendStatus({ status: "aman" }, false)) }, icon("check"), "SAYA AMAN", h("small", {}, "Kabari koordinator bahwa Anda selamat")),
     h("button", { class: "big help", onclick: () => { help.hidden = false; help.scrollIntoView({ behavior: "smooth" }); } }, icon("sos"), "BUTUH BANTUAN", h("small", {}, "Minta evakuasi, medis, atau logistik")),
-    h("button", { class: "big report wide", onclick: () => { location.hash = "#lapor"; } }, icon("lapor"), "LAPOR KEJADIAN", h("small", {}, "Air naik, banjir, asap, atau api"))), help);
+    h("button", { class: "big report wide", onclick: () => { location.hash = "#lapor"; } }, icon("lapor"), "LAPOR KEJADIAN BANJIR", h("small", {}, "Air sungai naik, luapan, atau genangan air"))), help);
 
   const from = res.last_lat != null ? [res.last_lat, res.last_lng] : res.home_lat != null ? [res.home_lat, res.home_lng] : null;
   const usable = shelters.filter(s => s.is_verified && ["tersedia", "terbatas"].includes(s.status));
@@ -505,13 +602,51 @@ async function viewHome(box) {
 
 // ---------- Lapor kejadian ----------
 async function viewReport(box, ctx) {
+  if (me.role === "pos_pantau") {
+    box.append(
+      h("h2", {}, "Laporan & Verifikasi Pos Pantau"),
+      h("div", { class: "notice ok", style: "font-size:14.5px;line-height:1.6;padding:16px" },
+        "Petugas Pos Pantau tidak melakukan pelaporan kejadian warga. Tugas Pos Pantau adalah memantau kondisi sungai dan cuaca secara real-time, serta memverifikasi laporan kejadian yang masuk dari masyarakat."
+      ),
+      h("div", { style: "margin-top:16px" },
+        h("button", { class: "teal", onclick: () => { location.hash = "#reports"; } }, "📥 Buka Menu Laporan & Verifikasi Warga")
+      )
+    );
+    return;
+  }
+
   const regions = await api("GET", "/regions/lookup");
-  const hazard = h("select", {}, opts([["banjir", "Banjir"], ["kebakaran", "Kebakaran"]]));
-  const indicator = h("select", {}, opts(["api", "asap", "panas", "gas", "ledakan", "lainnya"], "asap"));
-  const indRow = field("Jenis indikasi kebakaran", indicator); indRow.hidden = true;
-  hazard.onchange = () => { indRow.hidden = hazard.value !== "kebakaran"; };
-  const desc = h("textarea", { placeholder: "Apa yang terlihat? (min. 5 karakter)" });
-  const region = h("select", {}, regionOptions(regions, me.region_id, ["rt", "rw", "kelurahan"]));
+  const title = h("input", { placeholder: "Contoh: Luapan Sungai Cikapundung Gandok / Tanggul Jebol", required: true });
+
+  const RIVER_CONDITIONS = [
+    { id: "air_naik", label: "Air sungai naik / meluap" },
+    { id: "sampah_menumpuk", label: "Sampah menumpuk / menyumbat" },
+    { id: "arus_deras", label: "Arus air sangat deras" },
+    { id: "tanggul_rusak", label: "Tanggul retak / jebol" },
+    { id: "genangan_jalan", label: "Genangan jalan / akses terputus" },
+    { id: "masuk_rumah", label: "Air masuk ke permukiman / rumah" },
+    { id: "lumpur_pekat", label: "Lumpur pekat / material hanyut" }
+  ];
+
+  const condBoxes = RIVER_CONDITIONS.map(opt => {
+    const chk = h("input", { type: "checkbox", value: opt.id });
+    const lbl = h("label", {
+      style: "display:inline-flex;align-items:center;gap:6px;background:#f8fafc;padding:6px 12px;border:1px solid #cbd5e1;border-radius:8px;cursor:pointer;font-size:13px;user-select:none;transition:all .15s"
+    }, chk, opt.label);
+    chk.onchange = () => {
+      lbl.style.background = chk.checked ? "#e0f2fe" : "#f8fafc";
+      lbl.style.borderColor = chk.checked ? "#0284c7" : "#cbd5e1";
+      lbl.style.color = chk.checked ? "#0369a1" : "inherit";
+      lbl.style.fontWeight = chk.checked ? "700" : "normal";
+    };
+    return { opt, chk, lbl };
+  });
+
+  const condContainer = h("div", {
+    style: "display:flex;flex-wrap:wrap;gap:8px;margin-top:4px"
+  }, condBoxes.map(c => c.lbl));
+
+  const desc = h("textarea", { placeholder: "Deskripsi tambahan atau keterangan detail kejadian di lapangan (min. 5 karakter)" });
   const lat = h("input", { type: "number", step: "any", placeholder: "lat" });
   const lng = h("input", { type: "number", step: "any", placeholder: "lng" });
   let gps = null, pin = null, map = null;
@@ -519,52 +654,114 @@ async function viewReport(box, ctx) {
     lat.value = (+la).toFixed(6); lng.value = (+ln).toFixed(6);
     if (map) { pin ? pin.setLatLng([la, ln]) : (pin = L.marker([la, ln], { icon: pinIcon("#dc2626", "!") }).addTo(map)); map.panTo([la, ln]); }
   };
-  const preset = h("select", {
-    onchange: ev => {
-      const p = PRESETS[ev.target.value]; if (!p) return;
-      gps = null; put(p[1], p[2]);
-      const ro = [...region.options].find(o => o.textContent.startsWith(p[3]));
-      if (ro) region.value = ro.value;
-    },
-  }, h("option", { value: "" }, "— titik contoh demo —"), PRESETS.map((p, i) => h("option", { value: i }, p[0])));
+
+  const BANDUNG_POS_PANTAU_PLACES = [
+    { id: "custom", name: "Ketik Lokasi Sendiri / Alamat Lainnya", lat: null, lng: null, region_hint: null },
+    { id: "gandok", name: "Pos Pantau Cikapundung Gandok (Cidadap)", lat: -6.8794, lng: 107.6083, region_hint: "Cidadap" },
+    { id: "viaduct", name: "Pos Pantau Cikapundung Viaduct (Sumur Bandung)", lat: -6.9147, lng: 107.6098, region_hint: "Sumur Bandung" },
+    { id: "pagarsih", name: "Pos Pantau Citepus Pagarsih (Astana Anyar)", lat: -6.9242, lng: 107.5956, region_hint: "Astana Anyar" },
+    { id: "rancacili", name: "Pos Pantau Cidurian Rancacili (Rancasari)", lat: -6.9531, lng: 107.6689, region_hint: "Rancasari" },
+    { id: "rajawali", name: "Pos Pantau Cibeureum Rajawali (Andir)", lat: -6.9089, lng: 107.5756, region_hint: "Andir" },
+    { id: "gedebage", name: "Pos Pantau Cinambo Gedebage (Gedebage)", lat: -6.9489, lng: 107.6972, region_hint: "Gedebage" }
+  ];
+
+  const locStationSel = h("select", {},
+    BANDUNG_POS_PANTAU_PLACES.map(p => h("option", { value: p.id }, p.name))
+  );
+
+  const locCustomInput = h("input", {
+    placeholder: "Ketik nama tempat/jalan kejadian (mis. Jl. Pagarsih No. 12 / bantaran sungai)",
+    value: ""
+  });
+
+  locStationSel.onchange = () => {
+    const sel = BANDUNG_POS_PANTAU_PLACES.find(p => p.id === locStationSel.value);
+    if (!sel || sel.id === "custom") {
+      locCustomInput.focus();
+      return;
+    }
+    locCustomInput.value = sel.name;
+    gps = null;
+    put(sel.lat, sel.lng);
+  };
+
   const sim = h("input", { type: "checkbox" });
   const sensor = h("input", { type: "checkbox" });
   const photo = h("input", { type: "file", accept: "image/png,image/jpeg,image/webp" });
   const out = h("div");
+
   const submit = act(async () => {
+    const selectedConds = condBoxes.filter(c => c.chk.checked).map(c => c.opt.id);
+    const condLabels = condBoxes.filter(c => c.chk.checked).map(c => c.opt.label.trim());
+    const locName = locCustomInput.value.trim() || (locStationSel.value !== "custom" ? (BANDUNG_POS_PANTAU_PLACES.find(p => p.id === locStationSel.value)?.name || "") : "");
+    const reportTitle = title.value.trim() || (condLabels.length ? `Laporan: ${condLabels.slice(0, 2).join(", ")}` : "Laporan Banjir");
+    const locPrefix = locName ? `[Lokasi: ${locName}] ` : "";
+    const condText = condLabels.length ? `[Kondisi: ${condLabels.join(", ")}] ` : "";
+    const detailText = desc.value.trim();
+    const fullDesc = `${locPrefix}${condText}${detailText}`.trim() || `${reportTitle} di ${locName || 'Kota Bandung'}.`;
+
+    let targetRegionId = me.region_id;
+    const selStation = BANDUNG_POS_PANTAU_PLACES.find(p => p.id === locStationSel.value);
+    if (selStation && selStation.region_hint && regions && regions.length) {
+      const matched = regions.find(r => r.name.toLowerCase().includes(selStation.region_hint.toLowerCase()));
+      if (matched) targetRegionId = matched.id;
+    }
+    if (!targetRegionId && regions && regions.length) {
+      targetRegionId = regions[0].id;
+    }
+
     const body = {
-      hazard: hazard.value, description: desc.value.trim(), region_id: Number(region.value),
-      lat: num(lat.value), lng: num(lng.value), source_mode: sim.checked ? "simulation" : "real",
-      reported_at: new Date().toISOString(), client_ref: uid(),
+      hazard: "banjir",
+      title: reportTitle,
+      location_name: locName || reportTitle,
+      conditions: selectedConds,
+      description: fullDesc.length >= 5 ? fullDesc : `${reportTitle} - Banjir Kota Bandung.`,
+      region_id: targetRegionId,
+      lat: num(lat.value),
+      lng: num(lng.value),
+      source_mode: sim.checked ? "simulation" : "real",
+      reported_at: new Date().toISOString(),
+      client_ref: uid(),
     };
-    if (hazard.value === "kebakaran") body.fire_indicator = indicator.value;
     if (gps) { body.gps_lat = gps[0]; body.gps_lng = gps[1]; }
     if (me.role === "pos_pantau" && sensor.checked) body.from_sensor = true;
     if (body.lat == null || body.lng == null) throw new Error("Pilih lokasi di peta, pakai GPS, atau isi koordinat");
     if (body.description.length < 5) throw new Error("Deskripsi minimal 5 karakter");
-    const r = await postOrQueue("/reports", body, `Laporan ${body.hazard}`);
+
+    const r = await postOrQueue("/reports", body, `Laporan ${reportTitle}`);
     if (!r.sent) { out.replaceChildren(h("div", { class: "notice warn" }, "Laporan disimpan di perangkat dan akan dikirim saat online. Foto hanya bisa dikirim saat online.")); return; }
-    let msg = `Laporan #${r.data.id} diterima — status: ${lab(r.data.status)}${r.data.incident_id ? `, kejadian #${r.data.incident_id}` : ""}.`;
+    let msg = `Laporan #${r.data.id} "${reportTitle}" diterima — status: ${lab(r.data.status)}${r.data.incident_id ? `, kejadian #${r.data.incident_id}` : ""}.`;
     if (photo.files[0]) {
       const fd = new FormData(); fd.append("file", photo.files[0]);
       try { await api("POST", `/reports/${r.data.id}/photo`, fd); msg += " Foto terlampir."; }
       catch (e) { msg += " Foto gagal: " + e.message; }
     }
     out.replaceChildren(h("div", { class: "notice ok" }, msg));
-    desc.value = ""; photo.value = "";
+    title.value = "";
+    desc.value = "";
+    photo.value = "";
+    locStationSel.value = "custom";
+    locCustomInput.value = "";
+    condBoxes.forEach(c => { c.chk.checked = false; c.chk.onchange(); });
   });
-  box.append(h("h2", {}, "Lapor Kejadian"),
-    h("div", { class: "notice" }, "Pilih RT/RW tempat kejadian (bukan alamat rumah). Lokasi ini menentukan siapa yang menerima peringatan. Jangan mendekati api atau arus air demi foto."),
+
+  box.append(h("h2", {}, "Lapor Kejadian Banjir"),
+    h("div", { class: "notice" }, "Pilih pos pantau atau ketik nama lokasi kejadian luapan banjir. Jangan mendekati arus deras demi foto."),
     h("div", { class: "cols-2" },
       h("div", { class: "card" },
-        h("div", { class: "row" }, field("Jenis kejadian", hazard), indRow),
-        field("Deskripsi", desc),
-        field("Lokasi kejadian (RT/RW)", region),
-        h("div", { class: "row" }, field("Titik contoh demo", preset), h("button", {
-          class: "sec", type: "button",
-          onclick: act(async () => { const p = await getPosition(); gps = [p[0], p[1]]; put(p[0], p[1]); }, "Lokasi GPS dipakai"),
-        }, "Pakai GPS saya")),
-        h("div", { class: "row" }, field("Latitude", lat), field("Longitude", lng)),
+        field("Judul Laporan", title),
+        field("Kondisi Laporan / Kondisi Sungai (Bisa pilih lebih dari 1)", condContainer),
+        field("Pilihan Lokasi Sesuai Pos Pantau / Ketik Sendiri", locStationSel),
+        field("Nama Tempat / Detail Alamat Kejadian", locCustomInput),
+        field("Deskripsi Detail / Catatan Lapangan", desc),
+        h("div", { class: "row", style: "align-items:flex-end;gap:8px" },
+          field("Latitude", lat),
+          field("Longitude", lng),
+          h("button", {
+            class: "sec", type: "button", style: "margin-bottom:6px;white-space:nowrap",
+            onclick: act(async () => { const p = await getPosition(); gps = [p[0], p[1]]; put(p[0], p[1]); }, "Lokasi GPS dipakai"),
+          }, "📍 Pakai GPS saya")
+        ),
         field("Foto (opsional, JPG/PNG/WebP, maks. 5 MB)", photo),
         h("label", { class: "chk" }, sim, "Data simulasi (demo) — diberi label SIMULASI"),
         me.role === "pos_pantau" ? h("label", { class: "chk" }, sensor, "Ini indikasi dari sensor pos pantau") : null,
@@ -590,7 +787,11 @@ async function viewMine(box) {
     h("button", { class: "small", onclick: act(async () => { await flushQueue(); await reload(); }) }, "Kirim sekarang")));
   box.append(h("div", { class: "card" }, table([
     { label: "#", key: "id" },
-    { label: "Jenis", render: r => [h("b", {}, r.hazard), r.fire_indicator ? ` (${r.fire_indicator})` : "", " ", simBadge(r.source_mode === "simulation")] },
+    { label: "Laporan", render: r => [
+      h("b", { style: "color:var(--navy)" }, r.title || "Laporan Banjir"), " ", simBadge(r.source_mode === "simulation"),
+      r.conditions && r.conditions.length ? h("div", { style: "display:flex;flex-wrap:wrap;gap:4px;margin:4px 0" }, r.conditions.map(c => badge(lab(c), "b-warn"))) : null,
+      h("div", { class: "small-text", style: "margin-top:2px" }, r.description)
+    ] },
     { label: "Status", render: r => badge(lab(r.status), r.status === "terverifikasi" ? "b-ok" : r.status === "ditolak" ? "b-bad" : "b-info") },
     { label: "Catatan koordinator", render: r => r.status_reason || "-" },
     { label: "Kejadian", render: r => r.incident_id ? "#" + r.incident_id : "-" },
@@ -601,9 +802,15 @@ async function viewMine(box) {
 
 // ---------- Peta evakuasi & navigasi ----------
 async function viewMapNav(box, ctx) {
-  const [shelters, routes, hazards, res] = await Promise.all([
+  const isSar = ["tim_sar", "relawan", "petugas", "koordinator"].includes(me.role);
+  const activeOrder = store.get("rw_active_task_nav");
+  const [shelters, routes, hazards, res, rescueData, helpReqs, sarTasks] = await Promise.all([
     api("GET", "/shelters"), api("GET", "/evacuation-routes"), api("GET", "/road-conditions"),
-    api("GET", "/me/resident").catch(() => null)]);
+    api("GET", "/me/resident").catch(() => null),
+    isSar ? api("GET", "/evacuation/rescue-targets").catch(() => null) : null,
+    isSar ? api("GET", "/help-requests").catch(() => []) : [],
+    isSar ? api("GET", "/tasks").catch(() => []) : []
+  ]);
   let map = null, meMarker = null, accCircle = null, myPos = null, routeLayer = null, watchId = null, chosen = null;
   const status = h("div", { class: "muted small-text" }, "Posisi belum ditentukan.");
   const results = h("div"), navBox = h("div");
@@ -662,6 +869,31 @@ async function viewMapNav(box, ctx) {
       else compassOnly();
     }
   });
+
+  const navigateToTarget = (lat, lng, name, victim = null) => {
+    if (!myPos) {
+      if (res?.home_lat != null) setPos([res.home_lat, res.home_lng], "lokasi awal");
+      else setPos(DEMO_CENTER, "Kota Bandung");
+    }
+    const d = dist(myPos, [lat, lng]);
+    const nearShelter = usable.map(s => ({ s, d: dist([lat, lng], [s.lat, s.lng]) })).sort((a, b) => a.d - b.d)[0]?.s;
+    const durSec = Math.round(d / 1.2);
+    drawOption({
+      shelter: { name: `Warga: ${name}`, lat, lng, id: 9999 },
+      points: [myPos, [lat, lng]],
+      distance_m: d,
+      duration_s: durSec,
+      source: "garis_lurus",
+      label: "Rute Penyelamatan Tim SAR",
+      warnings: ["Utamakan keselamatan tim saat evakuasi."],
+      steps: [
+        `Menuju lokasi ${name} di koordinat ${lat.toFixed(5)}, ${lng.toFixed(5)} (jarak: ±${fmtDist(d)})`,
+        nearShelter ? `Setelah menjemput korban, arahkan evakuasi ke shelter terdekat: ${nearShelter.name} (${nearShelter.address || 'Bandung'}) — ±${fmtDist(dist([lat, lng], [nearShelter.lat, nearShelter.lng]))}` : "Bawa korban ke shelter aman terdekat."
+      ]
+    }, null);
+    if (map) map.setView([lat, lng], 17);
+  };
+
   function compassOnly() {
     const near = usable.map(s => ({ s, d: dist(myPos, [s.lat, s.lng]) })).sort((a, b) => a.d - b.d)[0];
     if (!near) return results.replaceChildren(h("div", { class: "notice bad" }, "Offline dan belum ada data shelter tersimpan."));
@@ -677,10 +909,10 @@ async function viewMapNav(box, ctx) {
     const arrow = h("div", { class: "arrow", style: `transform:rotate(${b}deg)` }, icon("arrow"));
     live.replaceChildren(h("div", { class: "card flat", style: "margin:12px 0 0;background:var(--soft)" },
       h("div", { class: "navpanel" }, arrow, h("div", {},
-        h("div", { style: "font-size:20px;font-weight:800;color:var(--navy)" }, d < 30 ? "Anda sudah di shelter" : `±${fmtDist(d)} lagi`),
+        h("div", { style: "font-size:20px;font-weight:800;color:var(--navy)" }, d < 30 ? "Anda sudah di titik tujuan" : `±${fmtDist(d)} lagi`),
         h("div", { class: "muted" }, `Arah ${Math.round(b)}° (${compass(b)}) dari utara · akurasi GPS ±${Math.round(p[2] || 0)} m`),
         off > 50 ? h("div", { class: "err", style: "font-weight:700" }, `Anda ±${fmtDist(off)} di luar garis rute`) : null,
-        d < 30 ? h("div", { style: "font-weight:700;color:var(--ok)" }, "Lapor ke petugas posko untuk check-in.") : null)),
+        d < 30 ? h("div", { style: "font-weight:700;color:var(--ok)" }, "Tiba di tujuan.") : null)),
       h("button", { class: "danger small", style: "margin-top:10px", onclick: stopNav }, "Hentikan navigasi")));
     if (map) map.panTo(myPos);
   }
@@ -694,24 +926,233 @@ async function viewMapNav(box, ctx) {
   function stopNav() { if (watchId != null) navigator.geolocation.clearWatch(watchId); watchId = null; }
   cleanups.push(stopNav);
 
-  box.append(h("h2", {}, "Peta Evakuasi"),
-    h("div", { class: "cols-2" },
-      h("div", { class: "card" },
-        legend([["#0f9d6b", "Shelter"], ["#b91c1c", "Titik bahaya"], ["#0f9d6b", "Rute resmi terverifikasi (garis hijau)"], ["#0a64b8", "Rute dihitung / posisi saya"]]),
-        h("div", { id: "navmap", class: "map tall" }),
-        h("p", { class: "muted small-text" }, "Peta yang pernah Anda buka tersimpan otomatis untuk dipakai saat offline. Buka & geser peta di sekitar rumah dan shelter selagi online.")),
+  const legendItems = [
+    ["#0f9d6b", "Shelter Terverifikasi"],
+    ["#b91c1c", "Titik Bahaya Jalan"],
+    ["#0f9d6b", "Rute Resmi Hijau"],
+    ["#0a64b8", "Posisi Saya"]
+  ];
+  if (isSar) {
+    legendItems.push(["#dc2626", "Warga Prioritas (Lansia/Balita/Sakit/Hamil)"]);
+    legendItems.push(["#eab308", "Warga Butuh Evakuasi"]);
+    legendItems.push(["#2563eb", "Target Penugasan Tim SAR"]);
+  }
+
+  // Gabungkan seluruh target warga yang membutuhkan bantuan / penugasan SAR
+  const targetMap = new Map();
+  if (rescueData && rescueData.items) {
+    rescueData.items.forEach(t => {
+      const key = t.resident_id || t.name;
+      targetMap.set(key, { ...t });
+    });
+  }
+  if (helpReqs && helpReqs.length) {
+    helpReqs.forEach(hr => {
+      const r = hr.resident;
+      if (!r) return;
+      const key = r.id || r.name;
+      const existing = targetMap.get(key) || {};
+      const isVuln = hr.is_vulnerable || (r.vulnerability && r.vulnerability.length > 0);
+      targetMap.set(key, {
+        ...existing,
+        resident_id: r.id,
+        name: r.name,
+        status: "butuh_bantuan",
+        vulnerability: r.vulnerability || [],
+        family_vulnerability: hr.family_vulnerability || [],
+        priority: isVuln ? "kritis" : "sedang",
+        lat: existing.lat ?? r.last_lat ?? r.home_lat,
+        lng: existing.lng ?? r.last_lng ?? r.home_lng,
+        score: isVuln ? 90 : 40,
+        note: hr.note
+      });
+    });
+  }
+  if (sarTasks && sarTasks.length) {
+    sarTasks.forEach(t => {
+      if (["selesai", "gagal", "dibatalkan"].includes(t.status)) return;
+      const key = t.resident_id || t.resident_name || `task_${t.id}`;
+      const existing = targetMap.get(key) || {};
+      const isVuln = (t.resident_vulnerability && t.resident_vulnerability.length > 0) || ["kritis", "tinggi"].includes(t.priority);
+      targetMap.set(key, {
+        ...existing,
+        resident_id: t.resident_id,
+        name: t.resident_name || existing.name || `Warga Tugas #${t.id}`,
+        status: t.status === "baru" ? "butuh_bantuan" : "dalam_penanganan",
+        vulnerability: t.resident_vulnerability || existing.vulnerability || [],
+        priority: t.priority || (isVuln ? "kritis" : "sedang"),
+        lat: t.lat ?? existing.lat,
+        lng: t.lng ?? existing.lng,
+        score: isVuln ? 95 : 50,
+        task: t
+      });
+    });
+  }
+  const allVictims = Array.from(targetMap.values());
+
+  const activeOrderBanner = activeOrder ? h("div", {
+    class: "card",
+    style: "background:linear-gradient(135deg,#eff6ff,#dbeafe);border:2px solid #2563eb;margin-bottom:12px;box-shadow:0 4px 14px rgba(37,99,235,.2)"
+  },
+    h("div", { style: "display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px" },
       h("div", {},
-        h("div", { class: "card" }, h("h3", {}, "Cari rute ke shelter"), status,
-          h("div", { class: "btns", style: "margin:10px 0" },
-            h("button", { class: "sec", onclick: act(async () => { setPos(await getPosition(), "GPS"); }) }, "Pakai GPS"),
-            res?.home_lat != null ? h("button", { class: "sec", onclick: () => setPos([res.home_lat, res.home_lng], "lokasi rumah") }, "Dari rumah") : null,
-            h("button", { onclick: findRoute }, "Cari rute terdekat")),
-          h("p", { class: "muted small-text" }, "Atau ketuk peta untuk menentukan posisi. Lokasi dikirim ke layanan rute OSRM hanya untuk menghitung jalan."), results),
-        navBox)));
+        h("div", { style: "color:#1d4ed8;font-weight:800;font-size:15px;display:flex;align-items:center;gap:6px" },
+          "🎯 PERINTAH PENUGASAN EVAKUASI TIM SAR"
+        ),
+        h("div", { style: "font-size:14px;color:var(--navy);font-weight:700;margin-top:2px" },
+          `Target: ${activeOrder.name || 'Warga'} · Prioritas: ${(activeOrder.priority || 'Tinggi').toUpperCase()}`
+        ),
+        activeOrder.vulnerability && activeOrder.vulnerability.length ? h("div", { style: "font-size:12px;color:#dc2626;font-weight:700;margin-top:2px" },
+          "Kerentanan: " + activeOrder.vulnerability.join(", ")
+        ) : null
+      ),
+      h("div", { class: "btns" },
+        activeOrder.lat != null ? h("button", {
+          class: "green small",
+          style: "font-weight:700",
+          onclick: () => navigateToTarget(activeOrder.lat, activeOrder.lng, activeOrder.name)
+        }, "🎯 Mulai Arahkan ke Target") : null,
+        h("button", {
+          class: "ghost small",
+          style: "color:#dc2626;border-color:#fca5a5",
+          onclick: () => { store.del("rw_active_task_nav"); reload(); }
+        }, "✕ Selesai / Batal")
+      )
+    )
+  ) : null;
+
+  const sarTargetsBox = h("div");
+  if (isSar && allVictims.length) {
+    sarTargetsBox.append(
+      h("div", { class: "card", style: "background:linear-gradient(135deg,#fff1f2,#fef2f2);border:1px solid #fecdd3;margin-top:14px" },
+        h("h3", { style: "margin:0 0 8px;color:#991b1b;font-size:16px" }, `🎯 Target Penyelamatan Warga (${allVictims.length})`),
+        h("p", { class: "muted small-text" }, "Warga yang membutuhkan bantuan / penugasan evakuasi (Warna Merah: Prioritas Lansia/Balita/Sakit/Hamil, Kuning: Bantuan Evakuasi):"),
+        allVictims.map(t => {
+          const isVulnerable = (t.vulnerability && t.vulnerability.length > 0) ||
+                               (t.family_vulnerability && t.family_vulnerability.length > 0) ||
+                               t.priority === "kritis" || t.priority === "tinggi";
+          const isAssigned = activeOrder && (
+            (activeOrder.resident_id && activeOrder.resident_id === t.resident_id) ||
+            (activeOrder.name && t.name && activeOrder.name.toLowerCase() === t.name.toLowerCase())
+          );
+          return h("div", {
+            style: `display:flex;justify-content:space-between;align-items:center;background:#fff;padding:8px 12px;border-radius:8px;margin-bottom:6px;border:1px solid ${isAssigned ? '#2563eb' : isVulnerable ? '#fca5a5' : '#fed7aa'};box-shadow:${isAssigned ? '0 0 8px rgba(37,99,235,.25)' : 'none'};gap:8px`
+          },
+            h("div", {},
+              isAssigned ? badge("🎯 TUGAS ANDA", "b-ok") : null,
+              h("b", { style: "color:var(--navy);font-size:14px" }, t.name), " ",
+              isVulnerable ? badge("PRIORITAS RENTAN", "b-bad") : badge("BUTUH EVAKUASI", "b-warn"),
+              t.vulnerability && t.vulnerability.length ? h("div", { style: "font-size:12px;color:#dc2626;font-weight:700" }, "Kerentanan: " + t.vulnerability.join(", ")) : null,
+              t.lat != null ? h("div", { class: "muted small-text" }, `Lokasi: ${t.lat.toFixed(5)}, ${t.lng.toFixed(5)}`) : h("div", { class: "muted small-text" }, "Lokasi rumah belum terdata")
+            ),
+            t.lat != null ? h("button", {
+              class: isAssigned ? "green small" : "teal small",
+              style: isAssigned ? "font-weight:700" : "",
+              onclick: () => navigateToTarget(t.lat, t.lng, t.name, t)
+            }, isAssigned ? "🎯 Navigasi" : "📍 Arahkan") : null
+          );
+        })
+      )
+    );
+  }
+
+  box.append(h("h2", {}, isSar ? "Peta Evakuasi & Penyelamatan Tim SAR" : "Peta Evakuasi"));
+  if (activeOrderBanner) box.append(activeOrderBanner);
+  box.append(h("div", { class: "cols-2" },
+    h("div", { class: "card" },
+      legend(legendItems),
+      h("div", { id: "navmap", class: "map tall" }),
+      h("p", { class: "muted small-text" }, "Peta dan titik shelter Bandung tersimpan otomatis secara offline. Gunakan rute resmi dan utamakan keselamatan.")),
+    h("div", {},
+      isSar ? sarTargetsBox : null,
+      h("div", { class: "card" }, h("h3", {}, isSar ? "Navigasi & Pencarian Rute" : "Cari rute ke shelter"), status,
+        h("div", { class: "btns", style: "margin:10px 0" },
+          h("button", { class: "sec", onclick: act(async () => { setPos(await getPosition(), "GPS"); }) }, "Pakai GPS"),
+          res?.home_lat != null ? h("button", { class: "sec", onclick: () => setPos([res.home_lat, res.home_lng], "lokasi rumah") }, "Dari rumah") : null,
+          h("button", { onclick: findRoute }, "Cari shelter terdekat")),
+        h("p", { class: "muted small-text" }, "Atau ketuk peta untuk menentukan posisi awal navigasi."), results),
+      navBox,
+      !isSar ? sarTargetsBox : null)));
+
   ctx.post(() => {
     map = newMap($("#navmap"));
     if (!map) return;
     addRoutes(map, routes); addHazards(map, hazards); addShelters(map, shelters);
+
+    // Plot warga yang butuh bantuan / belum terkonfirmasi untuk Tim SAR & Koordinator
+    if (isSar && allVictims.length) {
+      allVictims.forEach(victim => {
+        if (victim.lat == null || victim.lng == null) return;
+        const isVulnerable = (victim.vulnerability && victim.vulnerability.length > 0) ||
+                             (victim.family_vulnerability && victim.family_vulnerability.length > 0) ||
+                             victim.priority === "kritis" || victim.priority === "tinggi";
+
+        const isAssignedOrder = activeOrder && (
+          (activeOrder.resident_id && activeOrder.resident_id === victim.resident_id) ||
+          (activeOrder.name && victim.name && activeOrder.name.toLowerCase() === victim.name.toLowerCase()) ||
+          (activeOrder.lat != null && Math.abs(activeOrder.lat - victim.lat) < 0.0001 && Math.abs(activeOrder.lng - victim.lng) < 0.0001)
+        );
+
+        let pinColor = "#eab308"; // Kuning default untuk warga butuh evakuasi
+        let pinIconChar = "SOS";
+        let pulse = false;
+
+        if (isAssignedOrder) {
+          pinColor = "#2563eb"; // Biru Target Tugas
+          pinIconChar = "🎯";
+          pulse = true;
+        } else if (isVulnerable) {
+          pinColor = "#dc2626"; // Titik Merah untuk Prioritas
+          pinIconChar = "!";
+          pulse = true;
+        } else {
+          pinColor = "#eab308"; // Warna Kuning untuk Warga yang Perlu Dievakuasi
+          pinIconChar = "SOS";
+          pulse = false;
+        }
+
+        const m = L.marker([victim.lat, victim.lng], {
+          icon: pinIcon(pinColor, pinIconChar, pulse),
+          zIndexOffset: isAssignedOrder ? 2000 : isVulnerable ? 1500 : 1000
+        }).addTo(map);
+
+        const nearShelter = usable.map(s => ({ s, d: dist([victim.lat, victim.lng], [s.lat, s.lng]) })).sort((a, b) => a.d - b.d)[0]?.s;
+
+        const pop = h("div", { style: "min-width:230px" },
+          isAssignedOrder ? badge("🎯 TARGET PERINTAH EVAKUASI ANDA", "b-ok") : null,
+          h("b", { style: "font-size:15px;color:var(--navy);display:block;margin:4px 0" }, victim.name),
+          h("div", { style: "display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px" },
+            isVulnerable ? badge("PRIORITAS RENTAN", "b-bad") : badge("WARGA BUTUH EVAKUASI", "b-warn"),
+            badge(lab(victim.status), "b-info")
+          ),
+          h("div", { class: "muted small-text", style: "margin:4px 0" }, `Prioritas: ${(victim.priority || 'sedang').toUpperCase()}${victim.score ? ` (${victim.score} poin)` : ''}`),
+          victim.vulnerability && victim.vulnerability.length ? h("div", { style: "font-size:12px;color:#dc2626;font-weight:700;margin-bottom:6px" }, "Kerentanan: " + victim.vulnerability.join(", ")) : null,
+          nearShelter ? h("div", { style: "font-size:12px;color:#0f9d6b;margin-bottom:8px;font-weight:600" }, `🏥 Shelter terdekat: ${nearShelter.name}`) : null,
+          h("div", { class: "btns" },
+            h("button", {
+              class: "teal small",
+              onclick: () => navigateToTarget(victim.lat, victim.lng, victim.name, victim)
+            }, "📍 Arahkan Navigasi ke Korban"),
+            h("a", { href: gmaps(victim.lat, victim.lng), target: "_blank", rel: "noopener" },
+              h("button", { class: "sec small", type: "button" }, "Google Maps ↗")
+            )
+          )
+        );
+        m.bindPopup(pop);
+        m.bindTooltip(tip(`${isAssignedOrder ? "🎯 TARGET: " : ""}${victim.name} (${isVulnerable ? "PRIORITAS RENTAN" : "Butuh Evakuasi"}) · ${victim.vulnerability?.join(", ") || "Warga"}`));
+
+        if (isAssignedOrder) {
+          m.openPopup();
+          navigateToTarget(victim.lat, victim.lng, victim.name, victim);
+        }
+      });
+
+      const victimPts = allVictims.filter(v => v.lat != null && v.lng != null).map(v => [v.lat, v.lng]);
+      if (victimPts.length > 0 && !activeOrder) {
+        map.fitBounds(L.latLngBounds(victimPts).pad(0.35));
+      }
+    }
+
     map.on("click", e => setPos([e.latlng.lat, e.latlng.lng], "dipilih di peta"));
     if (res?.home_lat != null) setPos([res.home_lat, res.home_lng], "lokasi rumah");
   });
@@ -748,7 +1189,7 @@ async function viewAlerts(box) {
 async function viewShelters(box, ctx) {
   const rows = await api("GET", "/shelters");
   const isCoord = ["koordinator", "admin"].includes(me.role);
-  const canCheckin = isCoord || ["relawan", "petugas"].includes(me.role);
+  const canCheckin = isCoord || ["tim_sar", "relawan", "petugas"].includes(me.role);
   box.append(h("h2", {}, "Shelter / Titik Aman"));
   if (!isCoord) box.append(h("div", { class: "notice" }, "Hanya titik aman yang sudah diverifikasi koordinator yang ditampilkan."));
   box.append(h("div", { class: "card" }, h("div", { id: "shmap", class: "map" }), table([
@@ -759,7 +1200,21 @@ async function viewShelters(box, ctx) {
     { label: "", render: s => h("a", { href: gmaps(s.lat, s.lng), target: "_blank", rel: "noopener" }, "Rute") },
     isCoord ? { label: "Aksi", render: s => h("div", { class: "btns" },
       s.is_verified ? null : h("button", { class: "small", onclick: act(async () => { await api("POST", `/shelters/${s.id}/verify`, { note: "Diverifikasi dari UI" }); await reload(); }, "Shelter diverifikasi") }, "Verifikasi"),
-      h("select", { onchange: act(async ev => { await api("POST", `/shelters/${s.id}/status`, { status: ev.target.value }); await reload(); }, "Status shelter diubah") },
+      h("select", { onchange: act(async ev => {
+        const newSt = ev.target.value;
+        await api("POST", `/shelters/${s.id}/status`, { status: newSt });
+        if (newSt === "penuh") {
+          const doAlert = confirm(`Shelter "${s.name}" ditandai PENUH. Siarkan pengumuman ke Tim SAR, Warga, dan Pos Pantau untuk pengalihan shelter?`);
+          if (doAlert) {
+            await api("POST", "/alerts/broadcast", {
+              message: `UPDATE SHELTER PENUH: ${s.name} telah mencapai batas kapasitas. Warga dan Tim SAR dialihkan ke shelter alternatif terdekat.`,
+              level: "waspada"
+            });
+            toast("Pengumuman pengalihan shelter berhasil disiarkan!");
+          }
+        }
+        await reload();
+      }, "Status shelter diubah") },
         opts(["tersedia", "terbatas", "penuh", "tidak_dapat_digunakan"], s.status))) } : null,
   ], rows)));
   ctx.post(() => { const map = newMap($("#shmap")); if (map) addShelters(map, rows); });
@@ -784,6 +1239,371 @@ async function viewShelters(box, ctx) {
         await reload();
       }, "Shelter ditambahkan (belum terverifikasi)"),
     }, "Simpan")));
+}
+
+// ---------- Modal Detail Pos Pantau (Live Auto-Update) ----------
+let stationDetailTimer = null;
+
+async function openStationDetailModal(stationId) {
+  if (stationDetailTimer) {
+    clearInterval(stationDetailTimer);
+    stationDetailTimer = null;
+  }
+
+  let modal = document.getElementById("station-detail-modal");
+  if (!modal) {
+    modal = h("div", {
+      id: "station-detail-modal",
+      style: "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(11,58,110,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(3px)"
+    });
+    modal.onclick = (e) => {
+      if (e.target === modal) closeModal();
+    };
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && modal.style.display === "flex") closeModal();
+    });
+    document.body.appendChild(modal);
+  }
+
+  const closeModal = () => {
+    if (stationDetailTimer) {
+      clearInterval(stationDetailTimer);
+      stationDetailTimer = null;
+    }
+    modal.style.display = "none";
+  };
+
+  modal.replaceChildren(h("div", { class: "card", style: "max-width:680px;width:100%;padding:24px;background:#fff;border-radius:14px" },
+    h("p", { class: "muted" }, "Memuat data pos pantau terkini...")
+  ));
+  modal.style.display = "flex";
+
+  const titleEl = h("h2", { style: "margin:0 0 4px;font-size:22px;color:var(--navy)" }, "Pos Pantau");
+  const subTitleEl = h("div", { class: "muted", style: "font-size:14px;font-weight:600" }, "Memuat...");
+
+  const tmaValEl = h("b", { style: "font-size:24px" }, "— cm");
+  const tmaBoxEl = h("div", { class: "stat", style: "--c:#0f9d6b" }, tmaValEl, h("span", {}, "Tinggi Muka Air (TMA)"));
+
+  const condValEl = h("b", { style: "font-size:16px" }, "—");
+  const condBoxEl = h("div", { class: "stat", style: "--c:#0f9d6b" }, condValEl, h("span", {}, "Status Kondisi"));
+
+  const trendValEl = h("b", { style: "font-size:16px" }, "—");
+  const trendBoxEl = h("div", { class: "stat", style: "--c:#0a64b8" }, trendValEl, h("span", {}, "Arah Tren"));
+
+  const thresholdValEl = h("b", { style: "font-size:15px" }, "— / — cm");
+  const thresholdBoxEl = h("div", { class: "stat", style: "--c:#64748b" }, thresholdValEl, h("span", {}, "Waspada / Bahaya"));
+
+  const chartBoxEl = h("div", { style: "min-height:180px" });
+
+  const techCoordsEl = h("b", {}, "—");
+  const techRegionEl = h("b", {}, "—");
+  const techWarnEl = h("b", {}, "—");
+  const techDangerEl = h("b", {}, "—");
+  const techNoteEl = h("div", { style: "margin-top:8px;font-size:13px", class: "muted" }, "");
+
+  const gmapsBtn = h("button", { class: "sec small", type: "button" }, "Buka Google Maps ↗");
+  const controlContainer = h("div", { style: "margin-top:10px;padding-top:10px;border-top:1px solid var(--line)" });
+
+  const content = h("div", {},
+    h("div", { style: "display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;border-bottom:1px solid var(--line);padding-bottom:12px" },
+      h("div", {},
+        titleEl,
+        subTitleEl
+      ),
+      h("div", { style: "display:flex;align-items:center;gap:8px" },
+        h("span", { style: "display:inline-flex;align-items:center;gap:4px;font-size:12px;background:#e0f2fe;color:#0369a1;padding:3px 8px;border-radius:12px;font-weight:700" },
+          h("span", { style: "width:8px;height:8px;border-radius:50%;background:#0284c7;display:inline-block" }),
+          "Live Monitoring"
+        ),
+        h("button", { class: "ghost small", style: "font-size:22px;padding:2px 10px;line-height:1;border-radius:8px", onclick: closeModal }, "✕")
+      )
+    ),
+
+    // Grid Metrik TMA & Ambang
+    h("div", { class: "grid", style: "grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px" },
+      tmaBoxEl, condBoxEl, trendBoxEl, thresholdBoxEl
+    ),
+
+    // Grafik SVG Riwayat 12 Jam
+    h("div", { style: "margin-bottom:16px" },
+      h("div", { style: "display:flex;justify-content:space-between;align-items:center;margin-bottom:6px" },
+        h("h3", { style: "margin:0;font-size:15px;color:var(--navy)" }, "Grafik Ketinggian Air (12 Jam Terakhir)"),
+        h("span", { class: "muted small-text" }, "Diperbarui otomatis tiap 3 detik")
+      ),
+      chartBoxEl
+    ),
+
+    // Detail Teknis & Lokasi
+    h("div", { class: "card", style: "background:var(--soft);border:none;margin-bottom:14px;padding:14px" },
+      h("div", { style: "display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13.5px" },
+        h("div", {}, h("span", { class: "muted" }, "Koordinat: "), techCoordsEl),
+        h("div", {}, h("span", { class: "muted" }, "Wilayah ID: "), techRegionEl),
+        h("div", {}, h("span", { class: "muted" }, "Batas Waspada: "), techWarnEl),
+        h("div", {}, h("span", { class: "muted" }, "Batas Bahaya/Meluap: "), techDangerEl)
+      ),
+      techNoteEl,
+      h("div", { class: "btns", style: "margin-top:12px" },
+        gmapsBtn,
+        h("button", { class: "teal small", onclick: () => { closeModal(); location.hash = "#peta"; } }, "Navigasi Shelter Terdekat")
+      )
+    ),
+
+    controlContainer,
+
+    h("div", { style: "display:flex;justify-content:flex-end;margin-top:16px" },
+      h("button", { class: "sec", onclick: closeModal }, "Tutup")
+    )
+  );
+
+  modal.replaceChildren(h("div", { class: "card", style: "max-width:680px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 12px 36px rgba(0,0,0,.35);padding:22px;background:#fff;border-radius:14px" }, content));
+
+  const refreshModalData = async () => {
+    if (modal.style.display === "none") {
+      if (stationDetailTimer) { clearInterval(stationDetailTimer); stationDetailTimer = null; }
+      return;
+    }
+    try {
+      const [station, trend, liveList] = await Promise.all([
+        api("GET", "/stations").then(list => list.find(x => x.id === stationId)),
+        api("GET", `/stations/${stationId}/trend?hours=12`),
+        api("GET", "/stations/live").then(list => list.find(x => x.id === stationId))
+      ]);
+      if (!station) return;
+
+      const s = { ...station, ...(liveList || {}) };
+      const cond = s.current_condition || "normal";
+      const isBahaya = trend.status === "bahaya" || cond === "meluap";
+      const isWaspada = trend.status === "waspada" || cond === "waspada";
+      const statusColor = isBahaya ? "#dc2626" : isWaspada ? "#d97706" : "#0f9d6b";
+
+      titleEl.textContent = s.name;
+      subTitleEl.textContent = `${s.river_name || "Sungai di Bandung"} · ${s.is_upstream ? "Pos Hulu" : "Pos Hilir"}`;
+
+      tmaValEl.textContent = `${s.latest?.level_cm ?? "—"} cm`;
+      tmaBoxEl.style.setProperty("--c", statusColor);
+
+      condValEl.textContent = (cond || trend.status).toUpperCase();
+      condBoxEl.style.setProperty("--c", statusColor);
+
+      trendValEl.textContent = lab(trend.direction || "stabil");
+      thresholdValEl.textContent = `${s.warning_cm} / ${s.danger_cm} cm`;
+
+      techCoordsEl.textContent = `${s.lat.toFixed(4)}, ${s.lng.toFixed(4)}`;
+      techRegionEl.textContent = `#${s.region_id}`;
+      techWarnEl.textContent = `${s.warning_cm} cm`;
+      techDangerEl.textContent = `${s.danger_cm} cm`;
+
+      if (s.latest?.note) {
+        techNoteEl.textContent = `Catatan terakhir: ${s.latest.note} (${fmt(s.latest.observed_at)})`;
+      } else {
+        techNoteEl.textContent = `Diperbarui: ${fmt(s.latest?.observed_at || new Date().toISOString())}`;
+      }
+
+      gmapsBtn.onclick = () => window.open(gmaps(s.lat, s.lng), "_blank", "noopener");
+
+      chartBoxEl.replaceChildren(chart(trend.readings || [], s));
+
+      const canControl = me.role === "pos_pantau";
+      if (canControl) {
+        const changeCondition = async (targetCond) => {
+          await api("POST", `/stations/${s.id}/condition`, { condition: targetCond });
+          const notifMsg = targetCond === "normal"
+            ? `Kondisi ${s.name} kembali NORMAL`
+            : `Kondisi ${s.name} diubah ke ${targetCond.toUpperCase()}! Peringatan darurat dikirim ke Telegram & SMS.`;
+          toast(notifMsg);
+          await refreshModalData();
+        };
+
+        const btnNormal = h("button", {
+          type: "button",
+          class: "btn-cond normal " + (cond === "normal" ? "active" : ""),
+          onclick: act(() => changeCondition("normal"))
+        }, "🟢 NORMAL", h("small", {}, `< ${s.warning_cm} cm`));
+
+        const btnWaspada = h("button", {
+          type: "button",
+          class: "btn-cond waspada " + (cond === "waspada" ? "active" : ""),
+          onclick: act(() => changeCondition("waspada"))
+        }, "🟡 WASPADA", h("small", {}, `${s.warning_cm} - ${s.danger_cm} cm`));
+
+        const btnMeluap = h("button", {
+          type: "button",
+          class: "btn-cond meluap " + (cond === "meluap" ? "active" : ""),
+          onclick: act(() => changeCondition("meluap"))
+        }, "🔴 MELUAP", h("small", {}, `> ${s.danger_cm} cm`));
+
+        controlContainer.replaceChildren(
+          h("div", { style: "font-weight:800;font-size:13px;color:var(--navy);margin-bottom:6px" }, "Tombol Kontrol Kondisi Sungai (Pos Pantau / Koordinator):"),
+          h("div", { class: "condition-btns" }, btnNormal, btnWaspada, btnMeluap)
+        );
+      } else {
+        controlContainer.replaceChildren();
+      }
+    } catch (err) {
+      console.warn("Error updating station modal:", err);
+    }
+  };
+
+  await refreshModalData();
+  stationDetailTimer = setInterval(refreshModalData, 3000);
+}
+
+// ---------- Live Monitoring Hidrometeorologi & Kontrol Pos Pantau ----------
+async function viewLiveMonitoring(box) {
+  const [stations, weather] = await Promise.all([
+    api("GET", "/stations/live"),
+    api("GET", "/weather/live")
+  ]);
+
+  const canControl = me.role === "pos_pantau";
+  const alertStation = stations.find(s => s.status === "bahaya" || s.current_condition === "meluap" || s.status === "waspada");
+
+  // Header tanpa teks LIVE (Update tiap 3 detik)
+  box.append(
+    h("div", { style: "margin-bottom:14px" },
+      h("h2", { style: "margin:0" }, "Live Monitoring Sungai & Cuaca Bandung")
+    )
+  );
+
+  // Early Warning Banner jika ada status waspada / meluap
+  if (alertStation) {
+    const isMeluap = alertStation.status === "bahaya" || alertStation.current_condition === "meluap";
+    box.append(
+      h("div", { class: "hero " + (isMeluap ? "l-evakuasi" : "l-waspada"), style: "margin-bottom:16px" },
+        h("small", {}, `PERINGATAN DINI & PREDIKSI BANJIR BANDUNG · ${alertStation.river_name || alertStation.name}`),
+        h("h1", {}, isMeluap ? "STATUS AIR: MELUAP (SIAGA TINGGI)" : "STATUS AIR: WASPADA LUAPAN"),
+        h("p", {}, `Ketinggian air saat ini ${alertStation.latest?.level_cm || "—"} cm. Curah hujan ${weather.rain_mm || 0} mm/jam. Aliran air hulu diprediksi meluap ke kawasan permukiman dalam 30–60 menit. Warga diimbau bersiap dan menuju shelter aman.`),
+        h("div", { class: "btns", style: "margin-top:10px" },
+          h("button", { class: "teal", onclick: () => { location.hash = "#peta"; } }, "Navigasi Shelter Terdekat →"),
+          h("button", { class: "sec", onclick: () => { location.hash = "#alerts"; } }, "Lihat Peringatan Resmi")
+        )
+      )
+    );
+  }
+
+  // Live Weather Card (Open-Meteo API) dengan fallback inline styles agar tidak dempet
+  box.append(
+    h("div", { class: "weather-hero", style: "background:linear-gradient(135deg,var(--navy),#0e7c86);color:#fff;border-radius:14px;padding:20px 22px;margin-bottom:16px;box-shadow:0 4px 18px rgba(11,58,110,.14)" },
+      h("div", { style: "display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px" },
+        h("h3", { style: "color:#fff;margin:0;font-size:17px;font-weight:800" }, `Cuaca ${weather.location || "Kota Bandung"}`),
+        h("span", { class: "badge b-info", style: "background:rgba(255,255,255,.22);color:#fff;font-weight:700" }, weather.source || "Open-Meteo API")
+      ),
+      h("p", { style: "margin:8px 0 0;font-size:16px;font-weight:700" }, `${weather.condition || "Berawan"} · Curah Hujan: ${weather.rain_mm || 0} mm/jam`),
+      h("div", { class: "w-grid", style: "display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:14px" },
+        h("div", { class: "w-item", style: "background:rgba(255,255,255,.14);padding:10px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.2)" },
+          h("span", { style: "display:block;font-size:12px;opacity:0.9;margin-bottom:2px" }, "Suhu Udara"),
+          h("b", { style: "display:block;font-size:20px;font-weight:800" }, `${weather.temperature_c ?? 24} °C`)
+        ),
+        h("div", { class: "w-item", style: "background:rgba(255,255,255,.14);padding:10px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.2)" },
+          h("span", { style: "display:block;font-size:12px;opacity:0.9;margin-bottom:2px" }, "Curah Hujan"),
+          h("b", { style: "display:block;font-size:20px;font-weight:800" }, `${weather.rain_mm ?? 0} mm/jam`)
+        ),
+        h("div", { class: "w-item", style: "background:rgba(255,255,255,.14);padding:10px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.2)" },
+          h("span", { style: "display:block;font-size:12px;opacity:0.9;margin-bottom:2px" }, "Kelembapan"),
+          h("b", { style: "display:block;font-size:20px;font-weight:800" }, `${weather.humidity_pct ?? 80} %`)
+        ),
+        h("div", { class: "w-item", style: "background:rgba(255,255,255,.14);padding:10px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.2)" },
+          h("span", { style: "display:block;font-size:12px;opacity:0.9;margin-bottom:2px" }, "Kecepatan Angin"),
+          h("b", { style: "display:block;font-size:20px;font-weight:800" }, `${weather.wind_speed_kmh ?? 10} km/j`)
+        )
+      )
+    )
+  );
+
+  box.append(
+    h("div", { style: "margin-bottom:10px" },
+      h("h3", { style: "margin:0 0 4px" }, "Kondisi Ketinggian Air Sungai (TMA) Terkini"),
+      h("p", { class: "muted small-text", style: "margin:0" }, "Klik pada nama pos pantau untuk melihat grafik ketinggian air 12 jam, riwayat, dan detail teknis.")
+    )
+  );
+
+  const cards = stations.map(s => {
+    const cond = s.current_condition || "normal";
+    const lvl = s.latest?.level_cm != null ? s.latest.level_cm : "—";
+    const statusClass = s.status === "bahaya" ? "g-meluap" : s.status === "waspada" ? "g-waspada" : "g-normal";
+    const cardBorderColor = s.status === "bahaya" ? "#f87171" : s.status === "waspada" ? "#fbd89a" : "#a3e6c5";
+
+    const card = h("div", {
+      class: "station-live-card c-" + cond,
+      style: `background:#fff;border-radius:14px;border:2px solid ${cardBorderColor};padding:18px 20px;margin-bottom:14px;box-shadow:0 2px 8px rgba(11,58,110,.06)`
+    },
+      h("div", { style: "display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px" },
+        h("div", {
+          style: "cursor:pointer;flex:1;min-width:220px",
+          onclick: () => openStationDetailModal(s.id),
+          title: "Klik untuk melihat grafik & riwayat lengkap"
+        },
+          h("div", { style: "display:flex;align-items:center;gap:8px;flex-wrap:wrap" },
+            h("b", { style: "font-size:18px;color:var(--blue);text-decoration:underline" }, s.name),
+            h("span", { style: "font-size:11.5px;background:#e0f2fe;color:#0369a1;padding:2px 8px;border-radius:6px;font-weight:700" }, "🔍 Lihat Detail & Grafik")
+          ),
+          h("div", { class: "muted small-text", style: "margin-top:2px" }, `${s.river_name || "Sungai"} ${s.is_upstream ? " · Hulu" : " · Hilir"} · Ambang waspada: ${s.warning_cm} cm | bahaya: ${s.danger_cm} cm`)
+        ),
+        h("span", { class: "badge " + (s.status === "bahaya" ? "b-evakuasi" : s.status === "waspada" ? "b-waspada" : "b-ok") },
+          (s.current_condition || s.status).toUpperCase()
+        )
+      ),
+      h("div", { style: "display:flex;align-items:baseline;gap:12px;margin:10px 0" },
+        h("div", { class: "water-gauge " + statusClass, style: "font-size:36px;font-weight:900" }, `${lvl} cm`),
+        h("span", { class: "muted", style: "font-weight:700;font-size:14px" }, `Tren: ${lab(s.trend || "stabil")}`)
+      ),
+      h("div", { style: "display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px" },
+        h("div", { class: "muted small-text" },
+          s.latest?.note ? `Catatan: ${s.latest.note} · ${fmt(s.latest.observed_at)}` : "Menunggu pengamatan baru..."
+        ),
+        h("button", {
+          class: "ghost small",
+          style: "padding:3px 10px;font-size:12px;color:var(--teal)",
+          type: "button",
+          onclick: () => openStationDetailModal(s.id)
+        }, "Buka Detail →")
+      )
+    );
+
+    if (canControl) {
+      const btnNormal = h("button", {
+        type: "button",
+        class: "btn-cond normal " + (cond === "normal" ? "active" : ""),
+        onclick: act(async () => {
+          await api("POST", `/stations/${s.id}/condition`, { condition: "normal" });
+          toast(`Kondisi ${s.name} diubah ke NORMAL`);
+          await reload();
+        })
+      }, "🟢 NORMAL", h("small", {}, `< ${s.warning_cm} cm (Aman)`));
+
+      const btnWaspada = h("button", {
+        type: "button",
+        class: "btn-cond waspada " + (cond === "waspada" ? "active" : ""),
+        onclick: act(async () => {
+          await api("POST", `/stations/${s.id}/condition`, { condition: "waspada" });
+          toast(`Kondisi ${s.name} diubah ke WASPADA! Peringatan dikirim ke Telegram & SMS.`);
+          await reload();
+        })
+      }, "🟡 WASPADA", h("small", {}, `${s.warning_cm} - ${s.danger_cm} cm`));
+
+      const btnMeluap = h("button", {
+        type: "button",
+        class: "btn-cond meluap " + (cond === "meluap" ? "active" : ""),
+        onclick: act(async () => {
+          await api("POST", `/stations/${s.id}/condition`, { condition: "meluap" });
+          toast(`Kondisi ${s.name} diubah ke MELUAP! Peringatan bahaya dikirim ke Telegram & SMS.`);
+          await reload();
+        })
+      }, "🔴 MELUAP", h("small", {}, `> ${s.danger_cm} cm (Bahaya)`));
+
+      card.append(
+        h("div", { style: "margin-top:14px;padding-top:10px;border-top:1px solid var(--line)" },
+          h("div", { style: "font-weight:800;font-size:13px;color:var(--navy);margin-bottom:6px" }, "Tombol Kontrol Kondisi Sungai (Khusus Pos Pantau):"),
+          h("div", { class: "condition-btns" }, btnNormal, btnWaspada, btnMeluap),
+          h("div", { class: "muted small-text", style: "margin-top:6px" }, "⚡ Mengubah status sungai, menyiarkan peringatan darurat ke Telegram & SMS, dan update live 3 detik.")
+        )
+      );
+    }
+
+    return card;
+  });
+
+  box.append(...cards);
 }
 
 // ---------- Pos pantau ----------
@@ -890,8 +1710,8 @@ async function viewDashboard(box, ctx) {
 async function viewPriorities(box, ctx) {
   const sel = store.get("rw_prio_incident");
   const [d, users, shelters, incidents] = await Promise.all([
-    api("GET", "/evacuation/priorities" + (sel ? `?incident_id=${sel}` : "")), api("GET", "/users"), api("GET", "/shelters"), api("GET", "/incidents")]);
-  const vols = users.filter(u => ["relawan", "petugas"].includes(u.role) && u.is_active);
+    api("GET", "/evacuation/priorities" + (sel ? `?incident_id=${sel}` : "")), api("GET", "/tasks/teams"), api("GET", "/shelters"), api("GET", "/incidents")]);
+  const vols = users.filter(u => ["tim_sar", "relawan", "petugas"].includes(u.role) && u.is_active);
   const usable = shelters.filter(s => s.is_verified && ["tersedia", "terbatas"].includes(s.status));
   const incSel = h("select", { onchange: ev => { store.set("rw_prio_incident", ev.target.value || null); reload(); } },
     h("option", { value: "" }, "Kejadian aktif terbaru"), incidents.map(i => h("option", { value: i.id, selected: d.incident?.id === i.id && !!sel }, `#${i.id} ${i.hazard} — ${i.level.toUpperCase()}`)));
@@ -906,14 +1726,14 @@ async function viewPriorities(box, ctx) {
     const shel = h("select", {}, h("option", { value: "" }, "— tanpa shelter —"), usable.map(s => h("option", { value: s.id, selected: x.nearest_shelter?.id === s.id }, s.name)));
     const desc = h("textarea", { value: `Jemput ${x.name}${x.vulnerability.length ? " (" + x.vulnerability.join(", ") + ")" : ""}${x.nearest_shelter ? " ke " + x.nearest_shelter.name : ""}.` });
     slot.replaceChildren(h("div", { class: "card flat", style: "margin:8px 0 0;background:var(--soft)" },
-      h("div", { class: "row" }, field("Jenis", type), field("Prioritas", prio), field("Relawan", who), field("Shelter tujuan", shel)),
-      field("Instruksi untuk relawan", desc),
+      h("div", { class: "row" }, field("Jenis", type), field("Prioritas", prio), field("Tim SAR", who), field("Shelter tujuan", shel)),
+      field("Instruksi untuk Tim SAR", desc),
       h("div", { class: "btns" }, h("button", {
         class: "teal", onclick: act(async () => {
           await api("POST", "/tasks", { task_type: type.value, priority: prio.value, description: desc.value, resident_id: x.resident_id, incident_id: d.incident?.id || null, assignee_id: num(who.value), shelter_id: num(shel.value) });
           await reload();
-        }, "Tugas dibuat"),
-      }, "Buat tugas"), h("button", { class: "ghost", onclick: () => slot.replaceChildren() }, "Batal"))));
+        }, "Tugas penyelamatan dikirim ke Tim SAR"),
+      }, "Ajukan Bantuan ke Tim SAR"), h("button", { class: "ghost", onclick: () => slot.replaceChildren() }, "Batal"))));
   };
 
   box.append(h("h2", {}, "Prioritas Evakuasi"),
@@ -937,7 +1757,7 @@ async function viewPriorities(box, ctx) {
               slot),
             h("div", { class: "btns no-print", style: "flex-direction:column" },
               x.lat != null ? h("button", { class: "sec small", onclick: () => map?.setView([x.lat, x.lng], 18) }, "Peta") : null,
-              x.task ? null : h("button", { class: "small", onclick: () => taskForm(x, slot) }, "Tugaskan")));
+              x.task ? null : h("button", { class: "small teal", onclick: () => taskForm(x, slot) }, "Minta Bantuan Tim SAR")));
         }) : h("div", { class: "notice ok" }, "Semua warga di wilayah ini tercatat aman / sudah di titik aman."))));
   ctx.post(() => {
     map = newMap($("#priomap"));
@@ -967,10 +1787,16 @@ function taskCard(t, { shelters = [], vols = [], isCoord = false, myPos = null }
   const finishForm = () => {
     const shel = h("select", {}, h("option", { value: "" }, "— tidak ke shelter —"), shelters.map(s => h("option", { value: s.id, selected: s.id === t.shelter_id }, s.name)));
     const people = h("input", { type: "number", min: 0, value: t.people_count ?? 1 });
-    const note = h("textarea", { placeholder: "Hasil penanganan (wajib)" });
+    const note = h("textarea", { placeholder: "Catatan hasil penanganan & kondisi korban (wajib)" });
     slot.replaceChildren(h("div", { class: "card flat", style: "margin:8px 0 0;background:var(--soft)" },
-      h("div", { class: "row" }, field("Tiba di shelter", shel), field("Jumlah orang", people)), field("Hasil", note),
-      h("button", { class: "green", onclick: act(async () => { await api("POST", `/tasks/${t.id}/status`, { status: "selesai", note: note.value, people_count: Number(people.value), shelter_id: num(shel.value) }); await reload(); }, "Tugas selesai") }, "Simpan selesai")));
+      h("h4", { style: "margin:0 0 8px;color:var(--teal);font-size:15px" }, "Laporan Pasca-Penyelamatan Warga (Tim SAR)"),
+      h("div", { class: "row" }, field("Evakuasi ke Shelter", shel), field("Jumlah Jiwa Diselamatkan", people)),
+      field("Catatan Hasil / Kondisi Korban", note),
+      h("button", { class: "green", onclick: act(async () => {
+        if (!note.value.trim() || note.value.trim().length < 3) throw new Error("Catatan hasil penanganan wajib diisi (min. 3 karakter)");
+        await api("POST", `/tasks/${t.id}/status`, { status: "selesai", note: note.value.trim(), people_count: Number(people.value), shelter_id: num(shel.value) });
+        await reload();
+      }, "Laporan penyelamatan berhasil dikirim") }, "Kirim Laporan & Selesaikan Tugas")));
   };
   const askReason = status => act(async () => {
     const reason = prompt(status === "gagal" ? "Alasan tugas tidak dapat dilaksanakan (wajib):" : "Alasan membatalkan (wajib):");
@@ -995,6 +1821,24 @@ function taskCard(t, { shelters = [], vols = [], isCoord = false, myPos = null }
     h("p", { style: "margin:6px 0" }, t.description),
     t.lat != null ? h("div", { class: "muted small-text" }, `Lokasi ${t.lat.toFixed(5)}, ${t.lng.toFixed(5)}${myPos ? " · ±" + fmtDist(dist(myPos, [t.lat, t.lng])) + " dari Anda" : ""} · `,
       h("a", { href: gmaps(t.lat, t.lng), target: "_blank", rel: "noopener" }, "Rute ke lokasi (Google Maps)")) : null,
+    t.lat != null && !final ? h("div", { style: "margin:8px 0" },
+      h("button", {
+        class: "teal small",
+        style: "display:inline-flex;align-items:center;gap:6px;font-weight:700",
+        onclick: () => {
+          store.set("rw_active_task_nav", {
+            id: t.id,
+            resident_id: t.resident_id,
+            name: t.resident_name || "Korban Evakuasi",
+            lat: t.lat,
+            lng: t.lng,
+            priority: t.priority,
+            vulnerability: t.resident_vulnerability || [],
+            shelter_id: t.shelter_id
+          });
+          location.hash = "#peta";
+        }
+      }, "🎯 Buka Peta & Arahkan Navigasi ke Korban")) : null,
     t.result ? h("div", { class: "notice " + (t.status === "selesai" ? "ok" : "bad"), style: "margin-top:8px" }, "Hasil: " + t.result) : null,
     final ? null : h("div", { class: "steps" }, STEP_ORDER.map((s, i) => h("span", { class: i < idx ? "done" : i === idx ? "now" : "" }, lab(s)))),
     final ? null : h("div", { class: "btns" }, next, isCoord ? h("button", { class: "danger", onclick: askReason("dibatalkan") }, NEXT_LABEL.dibatalkan) : null),
@@ -1021,8 +1865,8 @@ async function viewMyTasks(box) {
 }
 
 async function viewTasks(box, ctx) {
-  const [tasks, users, shelters, regions] = await Promise.all([api("GET", "/tasks"), api("GET", "/users"), api("GET", "/shelters"), api("GET", "/regions")]);
-  const vols = users.filter(u => ["relawan", "petugas"].includes(u.role) && u.is_active);
+  const [tasks, users, shelters, regions] = await Promise.all([api("GET", "/tasks"), api("GET", "/tasks/teams"), api("GET", "/shelters"), api("GET", "/regions")]);
+  const vols = users.filter(u => ["tim_sar", "relawan", "petugas"].includes(u.role) && u.is_active);
   const usable = shelters.filter(s => s.is_verified);
   const showAll = store.get("rw_tasks_all", false);
   const list = tasks.filter(t => showAll || !["selesai", "gagal", "dibatalkan"].includes(t.status));
@@ -1031,7 +1875,7 @@ async function viewTasks(box, ctx) {
     who: h("select", {}, h("option", { value: "" }, "— belum ditugaskan —"), vols.map(u => h("option", { value: u.id }, u.name))),
     shel: h("select", {}, h("option", { value: "" }, "— tanpa shelter —"), usable.map(s => h("option", { value: s.id }, s.name))),
     lat: h("input", { type: "number", step: "any" }), lng: h("input", { type: "number", step: "any" }) };
-  box.append(h("h2", {}, "Tugas Relawan"),
+  box.append(h("h2", {}, "Tugas Tim SAR & Penyelamatan"),
     h("div", { class: "btns no-print", style: "margin-bottom:12px" },
       h("button", { class: "sec small", onclick: () => { store.set("rw_tasks_all", !showAll); reload(); } }, showAll ? "Hanya tugas aktif" : "Tampilkan semua (termasuk selesai)"),
       h("button", { class: "sec small", onclick: () => window.print() }, "Cetak daftar tugas"),
@@ -1042,7 +1886,7 @@ async function viewTasks(box, ctx) {
         h("div", { class: "card" }, h("h3", {}, "Peta tugas"), h("div", { id: "taskmap", class: "map" })),
         h("details", { class: "card no-print" }, h("summary", {}, "Buat tugas umum (tanpa warga tertentu)"),
           h("div", { class: "row" }, field("Jenis", f.type), field("Prioritas", f.prio)), field("Wilayah", f.region), field("Instruksi", f.desc),
-          h("div", { class: "row" }, field("Relawan", f.who), field("Shelter", f.shel)),
+          h("div", { class: "row" }, field("Tim SAR", f.who), field("Shelter", f.shel)),
           h("p", { class: "muted small-text" }, "Ketuk peta tugas untuk mengisi lokasi."), h("div", { class: "row" }, field("Lat", f.lat), field("Lng", f.lng)),
           h("button", { class: "teal", onclick: act(async () => { await api("POST", "/tasks", { task_type: f.type.value, priority: f.prio.value, region_id: Number(f.region.value), description: f.desc.value, assignee_id: num(f.who.value), shelter_id: num(f.shel.value), lat: num(f.lat.value), lng: num(f.lng.value) }); await reload(); }, "Tugas dibuat") }, "Buat tugas")))));
   ctx.post(() => {
@@ -1154,39 +1998,228 @@ async function viewIncidents(box) {
   if (want) { store.del("rw_open"); await open(Number(want)); }
 }
 
-// ---------- Laporan (koordinator) ----------
-function reportsTable(rows, after) {
-  const review = (r, kind) => act(async () => {
-    if (kind === "reject") {
-      const reason = prompt("Alasan menolak laporan #" + r.id + " (wajib):");
-      if (!reason) throw new Error("batal");
-      await api("POST", `/reports/${r.id}/reject`, { reason });
-    } else await api("POST", `/reports/${r.id}/verify`, { note: prompt("Catatan verifikasi (opsional, mis. metode):") || null });
-    toast("Laporan diperbarui"); await after();
+// ---------- Modal Terima & Tolak Laporan (Pos Pantau / Koordinator) ----------
+function openAcceptReportModal(r, after) {
+  let modal = document.getElementById("accept-report-modal");
+  if (!modal) {
+    modal = h("div", {
+      id: "accept-report-modal",
+      style: "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(11,58,110,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(3px)"
+    });
+    modal.onclick = e => { if (e.target === modal) modal.style.display = "none"; };
+    document.body.appendChild(modal);
+  }
+  modal.style.display = "flex";
+
+  const condSel = h("select", { style: "width:100%;font-size:15px;padding:9px;border-radius:8px;font-weight:700;margin-top:4px" },
+    opts([
+      ["waspada", "WASPADA — Kenaikan debit air / potensi genangan banjir"],
+      ["meluap", "MELUAP — Air sungai meluap deras / masuk permukiman (Darurat)"]
+    ], "waspada")
+  );
+
+  const noteInput = h("textarea", {
+    style: "width:100%;min-height:75px;padding:8px;border-radius:8px;font-size:13px;margin-top:4px",
+    placeholder: "Catatan verifikasi pos pantau (opsional, mis. hasil cek visual di pos)"
   });
+
+  const locDisplay = r.location_name || r.title || `Koordinat ${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}`;
+  const condsDisplay = r.conditions && r.conditions.length ? r.conditions.map(lab).join(", ") : "Kenaikan debit air";
+
+  const confirmBtn = h("button", {
+    class: "danger",
+    style: "width:100%;margin-top:14px;padding:11px 16px;font-size:14px;font-weight:700",
+    onclick: act(async () => {
+      confirmBtn.disabled = true;
+      try {
+        await api("POST", `/reports/${r.id}/verify`, {
+          note: noteInput.value.trim() || null,
+          condition: condSel.value
+        });
+        toast("Laporan diverifikasi & Peringatan bencana disiarkan ke semua role dan Telegram!");
+        modal.style.display = "none";
+        await after();
+      } finally {
+        confirmBtn.disabled = false;
+      }
+    }, "Laporan diterima & Peringatan darurat disiarkan")
+  }, "📢 Konfirmasi Terima & Siarkan Peringatan Bencana");
+
+  modal.replaceChildren(
+    h("div", { class: "card", style: "max-width:520px;width:100%;padding:22px;background:#fff;border-radius:14px;box-shadow:0 12px 36px rgba(0,0,0,.35)" },
+      h("div", { style: "display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:12px" },
+        h("h3", { style: "margin:0;color:var(--navy);font-size:18px" }, `Terima Laporan Banjir #${r.id}`),
+        h("button", { class: "ghost small", style: "font-size:20px;padding:2px 8px", onclick: () => { modal.style.display = "none"; } }, "✕")
+      ),
+      h("div", { style: "background:#f8fafc;padding:10px 14px;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:12px;font-size:13px" },
+        h("div", {}, h("b", {}, "Judul Laporan: "), r.title || "Laporan Banjir"),
+        h("div", { style: "margin-top:4px" }, h("b", {}, "Lokasi Kejadian: "), h("span", { style: "color:var(--teal);font-weight:700" }, locDisplay)),
+        h("div", { style: "margin-top:4px" }, h("b", {}, "Kondisi dari Warga: "), condsDisplay),
+        r.description ? h("div", { style: "margin-top:4px;color:#475569" }, h("b", {}, "Deskripsi: "), r.description) : null
+      ),
+      field("Tetapkan Status Kondisi Bencana", condSel),
+      field("Catatan Pos Pantau (Opsional)", noteInput),
+      h("div", { class: "notice warn", style: "margin-top:10px;font-size:12px" },
+        "📢 Penetapan status WASPADA atau MELUAP otomatis mengirimkan peringatan darurat bencana di lokasi ini ke seluruh role aplikasi serta bot Telegram."
+      ),
+      confirmBtn
+    )
+  );
+}
+
+function openRejectReportModal(r, after) {
+  const reason = prompt(`Alasan menolak laporan #${r.id} dari warga (wajib):`);
+  if (reason === null) return;
+  if (!reason.trim() || reason.trim().length < 3) {
+    alert("Alasan penolakan laporan minimal 3 karakter.");
+    return;
+  }
+  act(async () => {
+    await api("POST", `/reports/${r.id}/reject`, { reason: reason.trim() });
+    toast("Laporan ditolak.");
+    await after();
+  }, "Laporan ditolak")();
+}
+
+// ---------- Laporan (koordinator & pos pantau) ----------
+function reportsTable(rows, after) {
   const photo = async (r, cell) => {
     const blob = await api("GET", `/reports/${r.id}/photo`, undefined, { blob: true });
     cell.replaceChildren(h("img", { class: "photo", src: URL.createObjectURL(blob), alt: "Foto" }));
   };
   return table([
     { label: "#", key: "id" },
-    { label: "Laporan", render: r => [h("b", {}, r.hazard + (r.fire_indicator ? ` (${r.fire_indicator})` : "")), " ", simBadge(r.source_mode === "simulation"), h("div", {}, r.description), h("div", { class: "muted small-text" }, `${r.lat.toFixed(5)}, ${r.lng.toFixed(5)} · pelapor #${r.reporter_id} · ${lab(r.source)} · ${fmt(r.received_at)}`)] },
+    { label: "Laporan", render: r => [
+      h("b", { style: "color:var(--navy);font-size:14px" }, r.title || "Laporan Banjir"),
+      " ",
+      simBadge(r.source_mode === "simulation"),
+      r.location_name ? h("div", { style: "font-size:13px;font-weight:700;color:var(--teal);margin:2px 0" }, "📍 " + r.location_name) : null,
+      r.conditions && r.conditions.length ? h("div", { style: "display:flex;flex-wrap:wrap;gap:4px;margin:4px 0" }, r.conditions.map(c => badge(lab(c), "b-warn"))) : null,
+      h("div", { style: "margin:4px 0" }, r.description),
+      h("div", { class: "muted small-text" }, `${r.lat.toFixed(5)}, ${r.lng.toFixed(5)} · pelapor #${r.reporter_id} · ${lab(r.source)} · ${fmt(r.received_at)}`)
+    ] },
     { label: "Status", render: r => [badge(lab(r.status), r.status === "terverifikasi" ? "b-ok" : r.status === "ditolak" ? "b-bad" : "b-info"), r.duplicate_of ? h("div", { class: "muted small-text" }, "duplikat #" + r.duplicate_of) : null, r.status_reason ? h("div", { class: "muted small-text" }, r.status_reason) : null] },
     { label: "Skor", render: r => [h("b", {}, r.score), r.flags.length ? h("div", {}, r.flags.map(f => badge(f.replaceAll("_", " "), "b-bad"))) : null,
       h("details", {}, h("summary", {}, "faktor"), r.score_factors.map(f => h("div", { class: "factor" }, `${f.poin >= 0 ? "+" : ""}${f.poin} ${f.faktor}: ${f.keterangan}`)))] },
     { label: "Foto", render: r => { const c = h("span"); if (r.has_photo) c.append(h("button", { class: "sec small", onclick: act(() => photo(r, c)) }, "Lihat")); else c.append("-"); return c; } },
     { label: "Aksi", render: r => ["diterima", "duplikat"].includes(r.status) ? h("div", { class: "btns" },
-      r.status === "diterima" ? h("button", { class: "small", onclick: review(r, "verify") }, "Verifikasi") : null,
-      h("button", { class: "danger small", onclick: review(r, "reject") }, "Tolak")) : "-" },
+      h("button", {
+        class: "small",
+        style: "background:#0f9d6b;border-color:#0f9d6b;color:#fff;font-weight:700",
+        onclick: () => openAcceptReportModal(r, after)
+      }, "Terima"),
+      h("button", {
+        class: "danger small",
+        style: "font-weight:700",
+        onclick: () => openRejectReportModal(r, after)
+      }, "Tolak")
+    ) : r.status === "terverifikasi" ? badge("TERVERIFIKASI", "b-ok") : r.status === "ditolak" ? badge("DITOLAK", "b-bad") : "-" },
   ], rows, "Tidak ada laporan.");
 }
 
+function openBroadcastModal(defaultMsg = "") {
+  let modal = document.getElementById("broadcast-modal");
+  if (!modal) {
+    modal = h("div", {
+      id: "broadcast-modal",
+      style: "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(11,58,110,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(3px)"
+    });
+    modal.onclick = (e) => { if (e.target === modal) modal.style.display = "none"; };
+    document.body.appendChild(modal);
+  }
+
+  const msgInput = h("textarea", {
+    style: "width:100%;min-height:95px;font-size:14px;padding:8px;border-radius:8px",
+    placeholder: "Contoh: STATUS WASPADA BANJIR: Ketinggian air sungai meluap di DAS Cikapundung. Warga bantaran sungai diimbau segera evakuasi ke shelter terdekat."
+  }, defaultMsg);
+
+  const levelSel = h("select", {}, opts([["waspada", "WASPADA (Kuning)"], ["siaga", "SIAGA (Oranye)"], ["evakuasi", "EVAKUASI / BAHAYA (Merah)"]], "waspada"));
+
+  const chkTelegram = h("input", { type: "checkbox", checked: true, disabled: true });
+  const chkSMS = h("input", { type: "checkbox", checked: true, disabled: true });
+
+  const sendBtn = h("button", {
+    class: "danger",
+    onclick: act(async () => {
+      const text = msgInput.value.trim();
+      if (!text || text.length < 5) throw new Error("Tuliskan pesan pengumuman minimal 5 karakter");
+      await api("POST", "/alerts/broadcast", {
+        message: text,
+        level: levelSel.value,
+        region_id: me.region_id
+      });
+      toast("Pengumuman darurat berhasil disiarkan ke Telegram & SMS!");
+      modal.style.display = "none";
+      await reload();
+    }, "Pengumuman disiarkan")
+  }, "📢 Kirim Siaran Sekarang");
+
+  modal.replaceChildren(
+    h("div", { class: "card", style: "max-width:540px;width:100%;padding:22px;background:#fff;border-radius:14px;box-shadow:0 12px 36px rgba(0,0,0,.3)" },
+      h("div", { style: "display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:10px" },
+        h("h3", { style: "margin:0;color:var(--navy);font-size:18px" }, "📢 Siarkan Pengumuman Darurat"),
+        h("button", { class: "ghost small", style: "font-size:20px;padding:2px 8px", onclick: () => { modal.style.display = "none"; } }, "✕")
+      ),
+      h("p", { class: "muted small-text" }, "Pengumuman darurat ini akan disiarkan ke seluruh role (Warga, Tim SAR, Koordinator Daerah, Pos Pantau) serta diteruskan ke Bot Telegram dan SMS otomatis."),
+      field("Tingkat Level Bahaya", levelSel),
+      field("Pesan Pengumuman Darurat", msgInput),
+      h("div", { style: "margin:10px 0" },
+        h("p", { class: "muted small-text", style: "margin-bottom:4px;font-weight:700" }, "Kanal Distribusi Otomatis:"),
+        h("label", { class: "chk", style: "display:inline-block;margin-right:16px" }, chkTelegram, "Bot Telegram Resmi"),
+        h("label", { class: "chk", style: "display:inline-block" }, chkSMS, "SMS Broadcast ke Warga & Responders")
+      ),
+      h("div", { class: "btns", style: "justify-content:flex-end;margin-top:16px" },
+        h("button", { class: "sec", onclick: () => { modal.style.display = "none"; } }, "Batal"),
+        sendBtn
+      )
+    )
+  );
+  modal.style.display = "flex";
+  msgInput.focus();
+}
+
 async function viewReports(box) {
-  const st = h("select", {}, opts([["", "Semua status"], ["diterima", "Diterima"], ["terverifikasi", "Terverifikasi"], ["ditolak", "Ditolak"], ["duplikat", "Duplikat"]], store.get("rw_rep_status", "")));
+  const [st, stRows, weather] = await Promise.all([
+    h("select", {}, opts([["", "Semua status"], ["diterima", "Diterima"], ["terverifikasi", "Terverifikasi"], ["ditolak", "Ditolak"], ["duplikat", "Duplikat"]], store.get("rw_rep_status", ""))),
+    api("GET", "/stations/live").catch(() => []),
+    api("GET", "/weather/live").catch(() => null)
+  ]);
   st.onchange = () => { store.set("rw_rep_status", st.value); reload(); };
   const rows = await api("GET", "/reports?limit=200" + (st.value ? "&status=" + st.value : ""));
-  box.append(h("h2", {}, "Laporan Masuk"), h("div", { class: "notice" }, "Skor hanya alat bantu prioritas, bukan bukti. Laporan berskor rendah tetap disimpan dan bisa diperiksa."),
-    h("div", { class: "row", style: "max-width:300px" }, field("Filter", st)), h("div", { class: "card" }, reportsTable(rows, reload)));
+
+  box.append(
+    h("div", { style: "display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:12px" },
+      h("h2", { style: "margin:0" }, me.role === "pos_pantau" ? "Laporan Masuk & Verifikasi Bencana" : "Laporan Masuk"),
+      h("button", {
+        class: "danger",
+        style: "display:inline-flex;align-items:center;gap:6px",
+        onclick: () => openBroadcastModal()
+      }, "📢 Siarkan Pengumuman Darurat (Telegram & SMS)")
+    )
+  );
+
+  // Card Pencocokan Sensor & Cuaca untuk Verifikasi
+  box.append(
+    h("div", { class: "card", style: "background:linear-gradient(135deg,#f0fdf4,#e0f2fe);border:1px solid #bae6fd;margin-bottom:16px" },
+      h("b", { style: "color:var(--navy);font-size:15px;display:block;margin-bottom:4px" }, "🔍 Pencocokan Sensor TMA & Cuaca Terkini (Bandung)"),
+      h("div", { class: "muted small-text" },
+        weather ? `Hujan: ${weather.rain_mm || 0} mm/jam (${weather.weather_desc || "Normal"}) · Suhu: ${weather.temperature_c || 28}°C · Kelembapan: ${weather.humidity_percent || 70}%` : "Data cuaca Bandung terkini"
+      ),
+      h("div", { style: "display:flex;gap:10px;flex-wrap:wrap;margin-top:8px" },
+        stRows.slice(0, 5).map(s => h("span", { style: "font-size:12px;background:#fff;padding:3px 8px;border-radius:6px;border:1px solid #cbd5e1" },
+          h("b", {}, s.name + ": "),
+          `${s.latest?.level_cm ?? "—"} cm `,
+          badge((s.current_condition || s.status || "normal").toUpperCase(), s.status === "bahaya" || s.current_condition === "meluap" ? "b-bad" : s.status === "waspada" ? "b-warn" : "b-ok")
+        ))
+      )
+    )
+  );
+
+  box.append(
+    h("div", { class: "notice" }, "Skor hanya alat bantu prioritas, bukan bukti. Cocokkan laporan warga dengan sensor TMA pos pantau dan cuaca sebelum verifikasi & siaran darurat."),
+    h("div", { class: "row", style: "max-width:300px" }, field("Filter Status", st)),
+    h("div", { class: "card" }, reportsTable(rows, reload))
+  );
 }
 
 // ---------- Warga (koordinator) ----------
@@ -1201,11 +2234,19 @@ async function viewResidents(box, ctx) {
     if (q.value) qs.set("q", q.value); if (vul.value) qs.set("vulnerable", vul.value); if (stf.value) qs.set("status", stf.value);
     const rows = await api("GET", "/residents?" + qs);
     list.replaceChildren(table([
-      { label: "Nama", render: r => [h("b", {}, r.name), r.has_smartphone ? "" : " ", r.has_smartphone ? null : badge("tanpa HP", "b-warn")] },
-      { label: "Rentan", render: r => r.vulnerability.length ? r.vulnerability.join(", ") : "-" },
+      { label: "Nama & Keluarga", render: r => [
+        h("b", {}, r.name),
+        r.has_smartphone ? "" : " ",
+        r.has_smartphone ? null : badge("tanpa HP", "b-warn"),
+        r.address_note ? h("div", { class: "muted small-text" }, "🏠 " + r.address_note) : null
+      ] },
+      { label: "Kerentanan", render: r => r.vulnerability.length ? r.vulnerability.map(v => badge(v, "b-bad")) : "-" },
       { label: "Status", render: r => [h("b", {}, lab(r.latest_status)), r.latest_status_source ? h("div", { class: "muted small-text" }, `${r.latest_status_source} · ${fmt(r.latest_status_at)}`) : null] },
       { label: "Lokasi", render: r => r.last_lat != null ? "terkini " + fmt(r.last_location_at) : r.home_lat != null ? "rumah" : "-" },
-      { label: "", render: r => h("button", { class: "small no-print", onclick: act(() => open(r.id)) }, "Detail") }], rows));
+      { label: "", render: r => h("div", { class: "btns" },
+        h("button", { class: "small no-print", onclick: act(() => open(r.id)) }, "Detail"),
+        r.latest_status === "butuh_bantuan" || r.latest_status === "belum_terkonfirmasi" ? h("button", { class: "teal small no-print", onclick: () => { location.hash = "#prioritas"; } }, "Ajukan SAR") : null
+      ) }], rows));
   };
   const open = async id => {
     const [r, hist] = await Promise.all([api("GET", `/residents/${id}`), api("GET", `/residents/${id}/statuses`)]);
@@ -1243,20 +2284,35 @@ async function viewResidents(box, ctx) {
     h("div", { class: "card" }, h("div", { class: "row no-print" }, field("Cari", q), field("Kerentanan", vul), field("Status", stf), h("button", { class: "sec", onclick: () => window.print() }, "Cetak daftar")), list),
     detail);
   await load();
-  const f = { name: h("input"), phone: h("input"), notes: h("textarea"), buddy: h("input"), buddyPhone: h("input"), consent: h("input", { type: "checkbox" }), smart: h("input", { type: "checkbox", checked: true }),
+  const f = { name: h("input"), phone: h("input"), familyHead: h("input", { placeholder: "Nama Kepala Keluarga / No KK" }), familyCount: h("input", { type: "number", min: 1, value: 1, placeholder: "Jumlah jiwa" }), notes: h("textarea"), buddy: h("input"), buddyPhone: h("input"), consent: h("input", { type: "checkbox" }), smart: h("input", { type: "checkbox", checked: true }),
     lat: h("input", { type: "number", step: "any" }), lng: h("input", { type: "number", step: "any" }) };
   const region = h("select", {}, regionOptions(regions, me.region_id, ["rt", "rw"]));
   const vulBox = ["lansia", "disabilitas", "anak", "sakit", "hamil", "tinggal_sendiri", "lainnya"].map(v => ({ v, c: h("input", { type: "checkbox" }) }));
-  box.append(h("details", { class: "card no-print" }, h("summary", {}, "Tambah data warga"),
-    h("div", { class: "row" }, field("Nama", f.name), field("Wilayah (RT/RW)", region), field("Telepon", f.phone)),
+  box.append(h("details", { class: "card no-print" }, h("summary", {}, "Tambah data warga & keluarga"),
+    h("div", { class: "row" }, field("Nama Warga", f.name), field("Wilayah (RT/RW)", region), field("Telepon", f.phone)),
+    h("div", { class: "row" }, field("Data Keluarga / Kepala KK", f.familyHead), field("Jumlah Anggota Keluarga (Jiwa)", f.familyCount)),
     h("label", { class: "chk" }, f.smart, "Memiliki smartphone"),
-    h("p", { class: "muted small-text", style: "margin-bottom:0" }, "Kerentanan:"), vulBox.map(x => h("label", { class: "chk", style: "display:inline-block;margin-right:14px" }, x.c, x.v.replaceAll("_", " "))),
-    field("Catatan bantuan (sensitif)", f.notes), h("div", { class: "row" }, field("Pendamping (buddy)", f.buddy), field("Telepon pendamping", f.buddyPhone)),
+    h("p", { class: "muted small-text", style: "margin-bottom:0" }, "Kerentanan (Prioritas Evakuasi: Lansia, Balita/Anak, Disabilitas, Sakit, Hamil):"), vulBox.map(x => h("label", { class: "chk", style: "display:inline-block;margin-right:14px" }, x.c, x.v.replaceAll("_", " "))),
+    field("Catatan bantuan / kerentanan", f.notes), h("div", { class: "row" }, field("Pendamping (buddy)", f.buddy), field("Telepon pendamping", f.buddyPhone)),
     h("p", { class: "muted small-text" }, "Lokasi rumah — ketuk peta:"), h("div", { id: "resmap", class: "map", style: "height:240px" }), h("div", { class: "row" }, field("Lat rumah", f.lat), field("Lng rumah", f.lng)),
     h("label", { class: "chk" }, f.consent, "Warga/keluarga menyetujui data kerentanan & lokasi disimpan (wajib bila ada data kerentanan)"),
     h("button", {
       onclick: act(async () => {
-        await api("POST", "/residents", { name: f.name.value, region_id: Number(region.value), phone: f.phone.value || null, has_smartphone: f.smart.checked, vulnerability: vulBox.filter(x => x.c.checked).map(x => x.v), assistance_notes: f.notes.value || null, buddy_name: f.buddy.value || null, buddy_phone: f.buddyPhone.value || null, consent: f.consent.checked, home_lat: num(f.lat.value), home_lng: num(f.lng.value) });
+        const famStr = f.familyHead.value.trim() ? `[KK: ${f.familyHead.value.trim()} (${f.familyCount.value || 1} org)] ` : "";
+        await api("POST", "/residents", {
+          name: f.name.value,
+          region_id: Number(region.value),
+          phone: f.phone.value || null,
+          has_smartphone: f.smart.checked,
+          address_note: famStr ? famStr.trim() : null,
+          vulnerability: vulBox.filter(x => x.c.checked).map(x => x.v),
+          assistance_notes: f.notes.value || null,
+          buddy_name: f.buddy.value || null,
+          buddy_phone: f.buddyPhone.value || null,
+          consent: f.consent.checked,
+          home_lat: num(f.lat.value),
+          home_lng: num(f.lng.value)
+        });
         await reload();
       }, "Data warga disimpan"),
     }, "Simpan")));
@@ -1300,23 +2356,29 @@ async function viewWeather(box) {
 async function viewAdmin(box) {
   const [users, regions, rules, logs] = await Promise.all([api("GET", "/users"), api("GET", "/regions"), api("GET", "/rules"), api("GET", "/audit-logs?limit=100")]);
   const f = { u: h("input"), n: h("input"), p: h("input", { type: "password" }), tg: h("input", { placeholder: "chat ID (opsional)" }) };
-  const role = h("select", {}, opts(["warga", "koordinator", "pos_pantau", "relawan", "petugas", "admin"]));
+  const role = h("select", {}, opts([
+    ["warga", "Warga"],
+    ["koordinator", "Koordinator Daerah"],
+    ["pos_pantau", "Petugas Pos Pantau"],
+    ["tim_sar", "Tim SAR"],
+    ["admin", "Admin Sistem"]
+  ]));
   const region = h("select", {}, regionOptions(regions, me.region_id));
-  box.append(h("h2", {}, "Admin"),
-    h("div", { class: "card" }, h("h3", {}, "Akun"), table([
+  box.append(h("h2", {}, "Kelola Pengguna & Akun"),
+    h("div", { class: "card" }, h("h3", {}, "Kelola Akun Pengguna"), table([
       { label: "Username", key: "username" }, { label: "Nama", key: "name" }, { label: "Peran", render: u => ROLE_LABEL[u.role] || u.role }, { label: "Wilayah", render: u => "#" + u.region_id },
       { label: "Aktif", render: u => u.is_active ? badge("AKTIF", "b-ok") : badge("NONAKTIF", "b-bad") },
       { label: "", render: u => u.is_active && u.id !== me.id ? h("button", { class: "danger small", onclick: act(async () => { const reason = prompt("Alasan menonaktifkan " + u.username + ":"); if (!reason) throw new Error("batal"); await api("POST", `/users/${u.id}/deactivate`, { reason }); await reload(); }) }, "Nonaktifkan") : "" }], users),
-      h("details", {}, h("summary", {}, "Buat akun"),
+      h("details", {}, h("summary", {}, "Buat Akun Pengguna Baru"),
         h("div", { class: "row" }, field("Username (a-z 0-9 _ .)", f.u), field("Nama", f.n), field("Password (min 8)", f.p)),
         h("div", { class: "row" }, field("Peran", role), field("Wilayah", region), field("Telegram chat ID", f.tg)),
-        h("button", { onclick: act(async () => { await api("POST", "/users", { username: f.u.value, name: f.n.value, password: f.p.value, role: role.value, region_id: Number(region.value), telegram_chat_id: f.tg.value || null }); await reload(); }, "Akun dibuat") }, "Simpan"))),
-    h("div", { class: "card" }, h("h3", {}, "Aturan eskalasi (JSON)"), rules.map(r => {
+        h("button", { onclick: act(async () => { await api("POST", "/users", { username: f.u.value, name: f.n.value, password: f.p.value, role: role.value, region_id: Number(region.value), telegram_chat_id: f.tg.value || null }); await reload(); }, "Akun berhasil dibuat") }, "Simpan Akun"))),
+    h("div", { class: "card" }, h("h3", {}, "Aturan Eskalasi Siaga Bencana (JSON)"), rules.map(r => {
       const ta = h("textarea", { style: "min-height:240px;font-family:monospace;font-size:13px" }); ta.value = JSON.stringify(r.params, null, 2);
       return h("details", {}, h("summary", {}, r.hazard.toUpperCase()), ta,
         h("button", { onclick: act(async () => { await api("PUT", `/rules/${r.hazard}`, JSON.parse(ta.value)); await reload(); }, "Aturan disimpan") }, "Simpan aturan"));
     })),
-    h("div", { class: "card" }, h("h3", {}, "Audit log (100 terakhir)"), table([
+    h("div", { class: "card" }, h("h3", {}, "Audit Log Sistem (100 Terakhir)"), table([
       { label: "Waktu", render: l => fmt(l.created_at) }, { label: "Pelaku", render: l => l.actor_id ? "user #" + l.actor_id : "sistem" }, { label: "Aksi", key: "action" },
       { label: "Objek", render: l => `${l.entity_type} ${l.entity_id ?? ""}` }, { label: "Alasan", render: l => l.reason || "-" }], logs)));
 }

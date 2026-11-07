@@ -2,12 +2,12 @@
    - Aplikasi & data GET terakhir: network-first, cadangan cache saat offline (diberi header x-rw-offline).
    - Tile peta: cache-first untuk tile yang PERNAH dibuka. Tidak ada unduh massal (kebijakan tile OSM).
    - POST saat offline ditangani halaman (antrean di perangkat), bukan di sini. */
-const SHELL = "rw-shell-v2", API = "rw-api", TILES = "rw-tiles", EXT = "rw-ext";
+const SHELL = "rw-shell-v8", API = "rw-api", TILES = "rw-tiles", EXT = "rw-ext";
 const MAX_TILES = 2500;
-const PRECACHE = ["/", "/app.js", "/style.css", "/manifest.json", "/icons/logo-192.png", "/icons/logo-mark.png",
+const PRECACHE = ["/", "/app.js", "/v2.js", "/style.css", "/manifest.json", "/icons/logo-192.png", "/icons/logo-mark.png",
   "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css",
   "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"];
-const API_PATH = /^\/(alerts|shelters|evacuation-routes|road-conditions|stations|me\/resident|reports\/mine|tasks|config|regions|auth\/me|weather|dashboard|incidents|evacuation\/priorities|residents|help-requests|rules)/;
+const API_PATH = /^\/(alerts|shelters|evacuation-routes|road-conditions|stations|me\/resident|reports\/mine|tasks|config|regions|auth\/me|weather|dashboard|incidents|evacuation|residents|help-requests|rules|forecast|me\/mode|me\/family|routing)/;
 
 self.addEventListener("install", e => e.waitUntil(
   caches.open(SHELL).then(c => Promise.allSettled(PRECACHE.map(u => c.add(u)))).then(() => self.skipWaiting())));

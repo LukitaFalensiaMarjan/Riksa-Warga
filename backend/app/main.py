@@ -24,18 +24,38 @@ from app.routers import (
     tasks,
     users,
 )
-from app.services import engine, notifier
+from app.services import disaster, engine, forecast, notifier
+from app.services.simulator import simulation_loop
 
 log = logging.getLogger("riksa")
 
 
 def run_tick() -> None:
+    """Satu putaran otomatis: usulan eskalasi tertunda, prediksi risiko, dugaan butuh bantuan, retensi lokasi."""
+    try:
+        forecast.fetch_hourly()  # unduh prakiraan di luar kunci (HTTP lambat); hasilnya di-cache
+    except Exception:
+        log.exception("Prefetch prakiraan gagal")
+    fired: list = []
     with SessionLocal() as db:
         with engine.LOCK:
-            fired = engine.tick(db, utcnow())
-            db.commit()
-        if fired:  # kirim Telegram di luar kunci agar request lain tidak menunggu
-            notifier.deliver(db.get_bind(), [a.id for a in fired])
+            now = utcnow()
+            for step in (engine.tick, forecast.notify_predictions, disaster.apply_diduga):
+                try:
+                    fired += step(db, now) or []
+                    db.commit()
+                except Exception:  # satu langkah gagal tidak menghentikan yang lain
+                    db.rollback()
+                    log.exception("Langkah tick gagal: %s", step.__name__)
+            try:
+                disaster.purge_old_locations(db, now)
+                db.commit()
+            except Exception:
+                db.rollback()
+                log.exception("Retensi lokasi gagal")
+        ids = [a.id for a in fired if a is not None]
+        if ids:  # kirim Telegram/SMS di luar kunci agar request lain tidak menunggu
+            notifier.deliver(db.get_bind(), ids)
 
 
 async def _tick_loop() -> None:
@@ -49,10 +69,17 @@ async def _tick_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    task = asyncio.create_task(_tick_loop()) if settings.engine_tick_seconds > 0 else None
+    task_tick = asyncio.create_task(_tick_loop()) if settings.engine_tick_seconds > 0 else None
+    task_sim = (
+        asyncio.create_task(simulation_loop(settings.simulator_interval_seconds))
+        if settings.simulator_interval_seconds > 0
+        else None
+    )
     yield
-    if task:
-        task.cancel()
+    if task_tick:
+        task_tick.cancel()
+    if task_sim:
+        task_sim.cancel()
 
 
 app = FastAPI(title="Riksa Warga API", version="0.2.0", lifespan=lifespan)
